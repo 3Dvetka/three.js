@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Яблоко в невесомости</title>
+<title>Яблоко на столе</title>
 <style>
   :root {
     --bg-center: #1f2229;
@@ -28,7 +28,7 @@
   #stage canvas.dragging { cursor: grabbing; }
   #vignette {
     position: fixed; inset: 0; pointer-events: none;
-    background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%);
+    background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.6) 100%);
   }
   #hint {
     position: fixed; top: max(16px, env(safe-area-inset-top)); left: 16px; right: 16px;
@@ -66,8 +66,9 @@
 <body>
 <div id="stage"></div>
 <div id="vignette"></div>
-<div id="hint">Перетаскивайте, чтобы вращать. Колесо или щипок меняют масштаб. Двойной клик сбрасывает вид.</div>
+<div id="hint">Перетаскивайте, чтобы осмотреть. Колесо или щипок меняют масштаб. Двойной клик сбрасывает вид.</div>
 <div id="controls" hidden>
+  <button type="button" id="btn-drop">Уронить ещё раз</button>
   <button type="button" id="btn-reset">Сбросить вид</button>
   <button type="button" id="btn-spin" aria-pressed="true">Вращение: вкл</button>
   <button type="button" id="btn-leaf" aria-pressed="false">Листик: выкл</button>
@@ -133,7 +134,8 @@ window.__restoreWarn && window.__restoreWarn();
     sphereSeg: isMobile ? 256 : 320,
     shadowMap: isMobile ? 1024 : 2048,
     drops: isMobile ? 45 : 64,
-    lenticels: isMobile ? 2200 : 3000
+    lenticels: isMobile ? 2200 : 3000,
+    woodTex: isMobile ? 512 : 1024
   };
 
   // ---------- deterministic random + Perlin noise ----------
@@ -446,60 +448,134 @@ window.__restoreWarn && window.__restoreWarn();
   });
 
   var scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x15171c);
+  scene.background = new THREE.Color(0x0c0d10);
+  scene.fog = new THREE.Fog(0x0c0d10, 9, 26);
 
   var camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.01, 60);
-  var DEFAULT_DIST = 4.9, MIN_DIST = 1.3, MAX_DIST = 9;
+  var DEFAULT_DIST = 5.6, MIN_DIST = 1.35, MAX_DIST = 11;
 
-  // ---------- procedural environment ----------
+  // ---------- procedural environment: dark room, one lamp above, a cold window to the side ----------
   (function buildEnvironment() {
     var env = new THREE.Scene();
-    var room = new THREE.Mesh(new THREE.SphereGeometry(30, 48, 24), new THREE.MeshBasicMaterial({ color: 0x0a0b0e, side: THREE.BackSide }));
-    env.add(room);
-    function panel(w, h, intensity, hex, x, y, z) {
-      var col = new THREE.Color(hex).multiplyScalar(intensity);
-      var m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
+    env.add(new THREE.Mesh(new THREE.SphereGeometry(30, 48, 24), new THREE.MeshBasicMaterial({ color: 0x0b0b0d, side: THREE.BackSide })));
+    function panel(geo, intensity, hex, x, y, z) {
+      var m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(intensity), side: THREE.DoubleSide }));
       m.position.set(x, y, z); m.lookAt(0, 0, 0);
       env.add(m);
     }
-    panel(6, 4, 4.5, 0xfff1e2, -6, 8, 7);     // key softbox
-    panel(1.6, 10, 3.5, 0xffffff, 10, 1, 3);  // right strip
-    panel(1.4, 9, 2.2, 0xdce8ff, -10, 0, -1); // left strip
-    panel(4, 7, 4.5, 0xcfe0ff, 3, 3, -10);    // back rim
-    panel(14, 14, 0.5, 0xffffff, 0, 14, 0);   // ceiling bounce
-    panel(16, 16, 0.12, 0xffe6cc, 0, -14, 0); // faint floor bounce
-    panel(2.5, 2.5, 3.0, 0xffe2c4, 7, 6, 8);  // small warm accent
+    panel(new THREE.SphereGeometry(0.9, 24, 12), 40, 0xffdcae, -6.5, 15.5, 5.7); // frosted bulb
+    panel(new THREE.CircleGeometry(5, 40), 0.9, 0xffd7a8, -6.5, 18, 5.7);       // warm ceiling glow around it
+    panel(new THREE.PlaneGeometry(5, 7), 2.4, 0xcfdcff, 16, 4, -8);              // window
+    panel(new THREE.PlaneGeometry(2, 6), 1.2, 0xdfe6ff, -15, 3, -9);             // second dim window
+    panel(new THREE.PlaneGeometry(30, 30), 0.35, 0x8a5a34, 0, -12, 0);           // warm bounce from the table
     var pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(env, 0.02).texture;
     pmrem.dispose();
   })();
 
   // ---------- lights ----------
-  var key = new THREE.DirectionalLight(0xfff2e4, 2.6);
-  key.position.set(-3.2, 4.2, 4.2);
-  key.castShadow = true;
-  key.shadow.mapSize.set(QUALITY.shadowMap, QUALITY.shadowMap);
-  key.shadow.camera.left = -1.45; key.shadow.camera.right = 1.45;
-  key.shadow.camera.top = 1.45; key.shadow.camera.bottom = -1.45;
-  key.shadow.camera.near = 2; key.shadow.camera.far = 12;
-  key.shadow.bias = -0.0003;
-  key.shadow.normalBias = 0.012;
-  scene.add(key);
-  var rim = new THREE.DirectionalLight(0xd6e4ff, 3.2);
-  rim.position.set(2.6, 2.2, -4.5);
-  scene.add(rim);
-  var fill = new THREE.HemisphereLight(0xbfd0e6, 0x1c1410, 0.35);
+  var LAMP_POS = new THREE.Vector3(-8, 19, 7);
+  var LAMP_INTENSITY = 1050;
+  var lamp = new THREE.SpotLight(0xffe4c4, LAMP_INTENSITY, 0, 0.5, 0.85, 2);
+  lamp.position.copy(LAMP_POS);
+  lamp.target.position.set(0, 0.5, 0);
+  lamp.castShadow = true;
+  lamp.shadow.mapSize.set(QUALITY.shadowMap, QUALITY.shadowMap);
+  lamp.shadow.camera.near = 12; lamp.shadow.camera.far = 32;
+  lamp.shadow.focus = 0.35;
+  lamp.shadow.bias = -0.0002;
+  lamp.shadow.normalBias = 0.02;
+  scene.add(lamp); scene.add(lamp.target);
+  var windowLight = new THREE.DirectionalLight(0xb8ccff, 0.7);
+  windowLight.position.set(8, 3, -5);
+  scene.add(windowLight);
+  var fill = new THREE.HemisphereLight(0x9fb0c8, 0x5a3418, 0.22);
   scene.add(fill);
 
-  // ---------- hierarchy: pivot (user rotation + float) -> spin (auto rotation) -> apple parts ----------
-  var pivot = new THREE.Group();
-  var spin = new THREE.Group();
-  pivot.add(spin);
-  scene.add(pivot);
+  // ---------- table ----------
+  function makeWoodTextures(S) {
+    var col = makeCanvas(S, S), bmp = makeCanvas(S, S);
+    var cx = col.getContext('2d'), bx = bmp.getContext('2d');
+    var ci = cx.createImageData(S, S), bi = bx.createImageData(S, S);
+    var cd = ci.data, bd = bi.data;
+    var PLANKS = 4, TAU = Math.PI * 2;
+    var LIGHT = [148, 96, 56], DARKW = [92, 56, 30];
+    var tint = [1.0, 0.84, 1.1, 0.92];
+    for (var py = 0; py < S; py++) {
+      var y = (py + 0.5) / S;
+      var pl = Math.floor(y * PLANKS), v = y * PLANKS - pl, o = pl * 17.3 + 3;
+      var seam = Math.min(v, 1 - v) * S / PLANKS; // distance to plank edge in pixels
+      for (var px = 0; px < S; px++) {
+        var x = (px + 0.5) / S;
+        var ca = Math.cos(TAU * x), sa = Math.sin(TAU * x);
+        // noise that wraps around x so the texture tiles
+        // nearly straight grain along the plank with a gentle drift, thin late-wood lines and long fibres
+        var warp = noise(ca * 0.7 + o, sa * 0.7, v * 1.3) * 0.22 + noise(ca * 2.5, sa * 2.5 + o, v * 3) * 0.04;
+        var rings = (v + warp) * 16 + o;
+        var t = 0.5 + 0.5 * Math.sin(rings * TAU);
+        var late = smoothstep(0.7, 0.98, t);
+        var fibre = noise(ca * 28 + o, sa * 28, v * 160);
+        var pore = noise(ca * 60, sa * 60 + o, v * 420);
+        var fine = noise(ca * 6, sa * 6 + o, v * 40);
+        var m = clamp01(0.55 * late + 0.22 * (fibre + 0.5) * 0.8 + 0.12 * fine + (pore > 0.38 ? 0.18 : 0));
+        var k = tint[pl] * (0.94 + 0.12 * noise(ca * 1.2 + 9, sa * 1.2, o));
+        var r = (LIGHT[0] + (DARKW[0] - LIGHT[0]) * m) * k;
+        var g = (LIGHT[1] + (DARKW[1] - LIGHT[1]) * m) * k;
+        var b = (LIGHT[2] + (DARKW[2] - LIGHT[2]) * m) * k;
+        var h = 150 - 30 * late - 14 * fibre - 30 * (pore > 0.38 ? 1 : 0) + 8 * fine;
+        if (seam < 2.2) { var s = seam / 2.2; r *= 0.25 + 0.75 * s; g *= 0.25 + 0.75 * s; b *= 0.25 + 0.75 * s; h = 40 + 110 * s; }
+        var i4 = (py * S + px) * 4;
+        cd[i4] = r; cd[i4 + 1] = g; cd[i4 + 2] = b; cd[i4 + 3] = 255;
+        bd[i4] = bd[i4 + 1] = bd[i4 + 2] = h; bd[i4 + 3] = 255;
+      }
+    }
+    cx.putImageData(ci, 0, 0); bx.putImageData(bi, 0, 0);
+    return { color: col, bump: bmp };
+  }
 
+  var TABLE_TILE = 16; // one texture tile covers 16 units = 64 cm, four planks of 16 cm
+  var tableMat, contactShadow;
+  function buildTable() {
+    var tex = makeWoodTextures(QUALITY.woodTex);
+    var reps = 64 / TABLE_TILE;
+    function prep(c, srgb) {
+      var t = new THREE.CanvasTexture(c);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(reps, reps);
+      t.anisotropy = maxAniso;
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    }
+    tableMat = new THREE.MeshPhysicalMaterial({
+      map: prep(tex.color, true), bumpMap: prep(tex.bump, false), bumpScale: 1.0,
+      roughness: 0.55, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.35, envMapIntensity: 0.35
+    });
+    var table = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), tableMat);
+    table.rotation.x = -Math.PI / 2;
+    table.rotation.z = 0.12; // planks run slightly across the view
+    table.receiveShadow = true;
+    scene.add(table);
+
+    // soft contact darkening under the apple; the spot light shadow alone is too crisp at the contact
+    var c = makeCanvas(256, 256), x = c.getContext('2d');
+    var g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, 'rgba(0,0,0,0.85)'); g.addColorStop(0.35, 'rgba(0,0,0,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+    var st = new THREE.CanvasTexture(c);
+    contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: st, transparent: true, depthWrite: false, opacity: 0 }));
+    contactShadow.rotation.x = -Math.PI / 2;
+    contactShadow.position.y = 0.003;
+    contactShadow.renderOrder = 1;
+    scene.add(contactShadow);
+  }
+
+  // ---------- the apple body: everything that falls together ----------
+  var spin = new THREE.Group();
+  scene.add(spin);
+  var hullSamples = null; // subset of apple vertices for finding the lowest point
   var maxAniso = renderer.capabilities.getMaxAnisotropy();
   var leafGroup, dropMeshes = [];
-  var stats = { fps: 0, level: 0, drops: 0, trails: 0, ready: false, buildMs: 0 };
+  var stats = { fps: 0, level: 0, drops: 0, trails: 0, ready: false, buildMs: 0, impacts: 0, flickers: 0, minLight: 1, settled: false };
   window.__appleStats = stats;
 
   function buildApple() {
@@ -513,6 +589,9 @@ window.__restoreWarn && window.__restoreWarn();
       pos.setXYZ(i, o.x, o.y, o.z);
     }
     geo.computeVertexNormals();
+    var stride = Math.max(1, Math.floor(pos.count / 4000)), hs = [];
+    for (i = 0; i < pos.count; i += stride) hs.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+    hullSamples = new Float32Array(hs);
 
     var footprints = buildDrops();
     var tex = makeAppleTextures(QUALITY.texW, footprints);
@@ -613,6 +692,8 @@ window.__restoreWarn && window.__restoreWarn();
     leafGroup.visible = false;
     spin.add(leafGroup);
 
+    buildTable();
+    collectEnvMaterials();
     stats.buildMs = Math.round(performance.now() - t0);
   }
 
@@ -829,15 +910,17 @@ window.__restoreWarn && window.__restoreWarn();
     stats.visibleDropMeshes = visible;
   }
 
-  // ---------- interaction: rotate the apple, zoom the camera ----------
+  // ---------- camera orbit around the apple ----------
+  var TARGET = new THREE.Vector3(0, 0.85, 0);
+  var DEFAULT_AZ = 0.35, DEFAULT_POLAR = 1.17;
+  var POLAR_MIN = 0.3, POLAR_MAX = 1.5;
   var state = {
-    yaw: 0, pitch: 0.12, yawVel: 0, pitchVel: 0,
+    az: DEFAULT_AZ, polar: DEFAULT_POLAR, azVel: 0, polarVel: 0,
     dist: DEFAULT_DIST, targetDist: DEFAULT_DIST,
     dragging: false, lastInteract: -1e9,
-    autoEnabled: true, autoSpeed: 1, autoT: 0,
+    autoEnabled: true, autoSpeed: 0,
     resetting: false
   };
-  var PITCH_LIMIT = Math.PI / 2;
   var pointers = new Map();
   var pinchDist = 0;
   var lastMoveTime = 0;
@@ -845,8 +928,8 @@ window.__restoreWarn && window.__restoreWarn();
   function rotateBy(dx, dy) {
     var h = canvas.clientHeight || window.innerHeight;
     var f = (Math.PI * 1.1 / h) * THREE.MathUtils.clamp(state.dist / DEFAULT_DIST, 0.35, 1);
-    state.yaw += dx * f;
-    state.pitch = THREE.MathUtils.clamp(state.pitch + dy * f, -PITCH_LIMIT, PITCH_LIMIT);
+    state.az -= dx * f;
+    state.polar = THREE.MathUtils.clamp(state.polar - dy * f, POLAR_MIN, POLAR_MAX);
     return f;
   }
   function touchInteraction() { state.lastInteract = performance.now(); state.resetting = false; }
@@ -859,7 +942,7 @@ window.__restoreWarn && window.__restoreWarn();
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     state.dragging = true;
-    state.yawVel = state.pitchVel = 0;
+    state.azVel = state.polarVel = 0;
     canvas.classList.add('dragging');
     lastMoveTime = performance.now();
     if (pointers.size === 2) {
@@ -877,9 +960,8 @@ window.__restoreWarn && window.__restoreWarn();
       var dx = e.clientX - prev.x, dy = e.clientY - prev.y;
       var f = rotateBy(dx, dy);
       var dt = Math.max((now - lastMoveTime) / 1000, 1 / 240);
-      // smoothed velocity for inertia
-      state.yawVel = state.yawVel * 0.6 + (dx * f / dt) * 0.4;
-      state.pitchVel = state.pitchVel * 0.6 + (dy * f / dt) * 0.4;
+      state.azVel = state.azVel * 0.6 + (-dx * f / dt) * 0.4;
+      state.polarVel = state.polarVel * 0.6 + (-dy * f / dt) * 0.4;
     }
     prev.x = e.clientX; prev.y = e.clientY;
     if (pointers.size === 2) {
@@ -887,7 +969,7 @@ window.__restoreWarn && window.__restoreWarn();
       var d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       if (pinchDist > 0 && d > 0) zoomBy(pinchDist / d);
       pinchDist = d;
-      state.yawVel = state.pitchVel = 0;
+      state.azVel = state.polarVel = 0;
     }
     lastMoveTime = now;
     touchInteraction();
@@ -898,7 +980,7 @@ window.__restoreWarn && window.__restoreWarn();
     if (pointers.size === 0) {
       state.dragging = false;
       canvas.classList.remove('dragging');
-      if (performance.now() - lastMoveTime > 80) { state.yawVel = state.pitchVel = 0; }
+      if (performance.now() - lastMoveTime > 80) { state.azVel = state.polarVel = 0; }
     }
     pinchDist = 0;
     touchInteraction();
@@ -914,8 +996,7 @@ window.__restoreWarn && window.__restoreWarn();
     zoomBy(Math.exp(THREE.MathUtils.clamp(dy, -200, 200) * k));
     hideHintSoon();
   }, { passive: false });
-  // Safari trackpad pinch
-  var gestureStart = 1;
+  var gestureStart = 1; // Safari trackpad pinch
   canvas.addEventListener('gesturestart', function (e) { e.preventDefault(); gestureStart = e.scale || 1; });
   canvas.addEventListener('gesturechange', function (e) {
     e.preventDefault();
@@ -923,37 +1004,158 @@ window.__restoreWarn && window.__restoreWarn();
     zoomBy(gestureStart / s);
     gestureStart = s;
   });
-
   canvas.addEventListener('dblclick', function (e) { e.preventDefault(); resetView(); });
 
   window.addEventListener('keydown', function (e) {
     var step = 0.12;
     switch (e.key) {
-      case 'ArrowLeft': state.yaw -= step; touchInteraction(); break;
-      case 'ArrowRight': state.yaw += step; touchInteraction(); break;
-      case 'ArrowUp': state.pitch = Math.max(state.pitch - step, -PITCH_LIMIT); touchInteraction(); break;
-      case 'ArrowDown': state.pitch = Math.min(state.pitch + step, PITCH_LIMIT); touchInteraction(); break;
+      case 'ArrowLeft': state.az += step; touchInteraction(); break;
+      case 'ArrowRight': state.az -= step; touchInteraction(); break;
+      case 'ArrowUp': state.polar = Math.min(state.polar + step, POLAR_MAX); touchInteraction(); break;
+      case 'ArrowDown': state.polar = Math.max(state.polar - step, POLAR_MIN); touchInteraction(); break;
       case '+': case '=': zoomBy(0.88); break;
       case '-': case '_': zoomBy(1 / 0.88); break;
       default: return;
     }
-    if (e.key.indexOf('Arrow') === 0) { state.yawVel = state.pitchVel = 0; }
+    if (e.key.indexOf('Arrow') === 0) { state.azVel = state.polarVel = 0; }
     e.preventDefault();
     hideHintSoon();
   });
 
   function resetView() {
-    state.yawVel = state.pitchVel = 0;
-    // shortest way back to the front
-    state.yaw = ((state.yaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    state.azVel = state.polarVel = 0;
+    // shortest way back to the default angle
+    var d = state.az - DEFAULT_AZ;
+    d = ((d + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    state.az = DEFAULT_AZ + d;
     state.resetting = true;
     state.targetDist = DEFAULT_DIST;
   }
 
+  // ---------- fall, bounce and rocking ----------
+  var G = 26;          // visual gravity, units/s^2 (slower than real so the fall can be seen)
+  var RESTITUTION = 0.3;
+  var DROP_HEIGHT = 6;
+  var body = {
+    y: DROP_HEIGHT, vy: 0, a: 0, av: 0, yaw: 0, yawVel: 0,
+    axis: new THREE.Vector3(1, 0, 0), restA: 0.04,
+    active: false, lowest: -0.86, impacts: 0
+  };
+  var dropRnd = mulberry32(5);
+  var qTilt = new THREE.Quaternion(), qYawB = new THREE.Quaternion(), qBody = new THREE.Quaternion();
+  var rotM = new THREE.Matrix4();
+  var UP = new THREE.Vector3(0, 1, 0);
+
+  function bodyQuaternion(out) {
+    qTilt.setFromAxisAngle(body.axis, body.a);
+    qYawB.setFromAxisAngle(UP, body.yaw);
+    return out.copy(qYawB).multiply(qTilt);
+  }
+  function lowestPoint(q) {
+    rotM.makeRotationFromQuaternion(q);
+    var e = rotM.elements, m1 = e[1], m5 = e[5], m9 = e[9], s = hullSamples, min = 1e9;
+    for (var i = 0; i < s.length; i += 3) {
+      var y = m1 * s[i] + m5 * s[i + 1] + m9 * s[i + 2];
+      if (y < min) min = y;
+    }
+    return min;
+  }
+
+  function startDrop() {
+    var ang = dropRnd() * Math.PI * 2;
+    body.axis.set(Math.cos(ang), 0, Math.sin(ang));
+    body.a = 0.35 + 0.3 * dropRnd();
+    body.av = (dropRnd() < 0.5 ? -1 : 1) * (0.6 + 0.8 * dropRnd());
+    body.yaw = dropRnd() * Math.PI * 2;
+    body.yawVel = (dropRnd() - 0.5) * 1.6;
+    body.restA = 0.02 + 0.05 * dropRnd();
+    body.y = DROP_HEIGHT; body.vy = 0;
+    body.active = true; body.impacts = 0;
+    flicker.t = -1;
+    stats.settled = false;
+  }
+
+  function stepBody(h) {
+    body.vy -= G * h;
+    body.y += body.vy * h;
+    body.a += body.av * h;
+    body.yaw += body.yawVel * h;
+    bodyQuaternion(qBody);
+    var low = lowestPoint(qBody);
+    body.lowest = low;
+    var contact = false;
+    if (body.y + low <= 0) {
+      body.y = -low;
+      contact = true;
+      if (body.vy < 0) {
+        var impact = -body.vy;
+        if (impact > 1.2) {
+          body.vy = impact * RESTITUTION;
+          body.av += (dropRnd() - 0.5) * impact * 0.35;
+          body.yawVel += (dropRnd() - 0.5) * impact * 0.08;
+          onImpact(impact);
+        } else {
+          body.vy = 0;
+        }
+      }
+    } else if (body.y + low < 0.002) {
+      contact = true;
+    }
+    if (contact) {
+      // the apple rocks on its rounded base towards its resting tilt
+      body.av += (-40 * (body.a - body.restA) - 3.4 * body.av) * h;
+      body.yawVel *= Math.exp(-h * 4);
+      if (body.vy === 0 && Math.abs(body.av) < 0.004 && Math.abs(body.a - body.restA) < 0.002 && Math.abs(body.yawVel) < 0.004) {
+        body.active = false;
+        stats.settled = true;
+      }
+    }
+  }
+
+  function onImpact(speed) {
+    body.impacts++;
+    stats.impacts++;
+    // the lamp falters once per fall, on the first and hardest hit
+    if (body.impacts === 1) { flicker.t = 0; stats.flickers++; }
+  }
+
+  // ---------- lamp flicker ----------
+  // brightness keyframes in seconds after the impact: a short dropout, a stutter, then full light again
+  var FLICKER_KEYS = [[0, 1], [0.02, 1], [0.05, 0.06], [0.12, 0.1], [0.15, 0.65], [0.18, 0.18], [0.25, 0.22], [0.31, 1.06], [0.42, 1]];
+  var flicker = { t: -1, level: 1 };
+  var envMaterials = [];
+  function flickerLevel(t) {
+    if (t < 0) return 1;
+    for (var i = 1; i < FLICKER_KEYS.length; i++) {
+      var a = FLICKER_KEYS[i - 1], b = FLICKER_KEYS[i];
+      if (t <= b[0]) return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]);
+    }
+    return 1;
+  }
+  function collectEnvMaterials() {
+    var seen = new Set();
+    scene.traverse(function (o) {
+      var m = o.material;
+      if (!m || seen.has(m) || m.envMapIntensity === undefined) return;
+      seen.add(m);
+      envMaterials.push({ m: m, base: m.envMapIntensity });
+    });
+  }
+  function applyLight(f) {
+    flicker.level = f;
+    lamp.intensity = LAMP_INTENSITY * f;
+    // reflections of the bulb dim with it; the window part of the room stays lit
+    var k = 0.3 + 0.7 * f;
+    for (var i = 0; i < envMaterials.length; i++) envMaterials[i].m.envMapIntensity = envMaterials[i].base * k;
+    if (f < stats.minLight) stats.minLight = f;
+  }
+
   // ---------- buttons ----------
+  var btnDrop = document.getElementById('btn-drop');
   var btnReset = document.getElementById('btn-reset');
   var btnSpin = document.getElementById('btn-spin');
   var btnLeaf = document.getElementById('btn-leaf');
+  btnDrop.addEventListener('click', startDrop);
   btnReset.addEventListener('click', resetView);
   function setSpin(on) {
     state.autoEnabled = on;
@@ -979,7 +1181,6 @@ window.__restoreWarn && window.__restoreWarn();
     var w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    // keep the whole apple in frame on narrow portrait screens
     camera.fov = camera.aspect < 0.8 ? 34 / Math.max(camera.aspect / 0.8, 0.62) : 34;
     camera.updateProjectionMatrix();
   }
@@ -990,8 +1191,8 @@ window.__restoreWarn && window.__restoreWarn();
   function applyLevel(level) {
     stats.level = level;
     if (level >= 1) {
-      key.shadow.mapSize.set(1024, 1024);
-      if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; }
+      lamp.shadow.mapSize.set(1024, 1024);
+      if (lamp.shadow.map) { lamp.shadow.map.dispose(); lamp.shadow.map = null; }
       setDropShare(0.7);
     }
     if (level >= 2) { setDropShare(0.45); renderer.setPixelRatio(Math.min(basePixelRatio, 1.5)); resize(); }
@@ -1009,63 +1210,78 @@ window.__restoreWarn && window.__restoreWarn();
     }
   }
 
-  // ---------- loop ----------
+  // ---------- update and render ----------
   var clock = new THREE.Clock();
-  var qPitch = new THREE.Quaternion(), qYaw = new THREE.Quaternion();
-  var AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0);
+  var camOffset = new THREE.Vector3();
+  var PHYS_STEP = 1 / 240;
+  var physAcc = 0;
 
-  function frame() {
-    var dt = Math.min(clock.getDelta(), 0.1);
+  function update(dt) {
     var now = performance.now();
-
-    // inertia after release
-    if (!state.dragging) {
-      if (Math.abs(state.yawVel) > 1e-4 || Math.abs(state.pitchVel) > 1e-4) {
-        state.yaw += state.yawVel * dt;
-        state.pitch = THREE.MathUtils.clamp(state.pitch + state.pitchVel * dt, -PITCH_LIMIT, PITCH_LIMIT);
-        var damp = Math.exp(-dt * 3.2);
-        state.yawVel *= damp; state.pitchVel *= damp;
-      }
+    if (!state.dragging && (Math.abs(state.azVel) > 1e-4 || Math.abs(state.polarVel) > 1e-4)) {
+      state.az += state.azVel * dt;
+      state.polar = THREE.MathUtils.clamp(state.polar + state.polarVel * dt, POLAR_MIN, POLAR_MAX);
+      var damp = Math.exp(-dt * 3.2);
+      state.azVel *= damp; state.polarVel *= damp;
     }
     if (state.resetting) {
       var kR = 1 - Math.exp(-dt * 5);
-      state.yaw += (0 - state.yaw) * kR;
-      state.pitch += (0.12 - state.pitch) * kR;
-      if (Math.abs(state.yaw) < 1e-3 && Math.abs(state.pitch - 0.12) < 1e-3) state.resetting = false;
+      state.az += (DEFAULT_AZ - state.az) * kR;
+      state.polar += (DEFAULT_POLAR - state.polar) * kR;
+      if (Math.abs(state.az - DEFAULT_AZ) < 1e-3 && Math.abs(state.polar - DEFAULT_POLAR) < 1e-3) state.resetting = false;
     }
     state.dist += (state.targetDist - state.dist) * (1 - Math.exp(-dt * 9));
 
-    // floating motion pauses while touched and eases back after release
+    // slow orbit; pauses while the scene is touched and eases back after release
     var idle = !state.dragging && (now - state.lastInteract > 1200);
     var targetSpeed = state.autoEnabled && idle ? 1 : 0;
-    state.autoSpeed += (targetSpeed - state.autoSpeed) * (1 - Math.exp(-dt * (targetSpeed > state.autoSpeed ? 1.2 : 6)));
-    state.autoT += dt * state.autoSpeed;
-    var T = state.autoT;
-    spin.rotation.set(0.26 * Math.sin(T * 0.21), T * 0.2, 0.17 * Math.sin(T * 0.16));
-    pivot.position.y = 0.035 * Math.sin(T * 0.75);
+    state.autoSpeed += (targetSpeed - state.autoSpeed) * (1 - Math.exp(-dt * (targetSpeed > state.autoSpeed ? 0.8 : 6)));
+    state.az += 0.12 * dt * state.autoSpeed;
 
-    qPitch.setFromAxisAngle(AX, state.pitch);
-    qYaw.setFromAxisAngle(AY, state.yaw);
-    pivot.quaternion.copy(qPitch).multiply(qYaw);
+    if (body.active) {
+      physAcc += dt;
+      while (physAcc >= PHYS_STEP) { stepBody(PHYS_STEP); physAcc -= PHYS_STEP; }
+    }
+    spin.position.set(0, body.y, 0);
+    spin.quaternion.copy(bodyQuaternion(qBody));
+    var gap = Math.max(body.y + body.lowest, 0);
+    var s = 1.25 + gap * 0.5;
+    contactShadow.scale.set(s, s, 1);
+    contactShadow.material.opacity = 0.75 * Math.exp(-gap * 1.6);
 
-    camera.position.set(0, 0.02 * state.dist, state.dist);
-    camera.lookAt(0, 0, 0);
+    if (flicker.t >= 0) {
+      flicker.t += dt;
+      applyLight(flickerLevel(flicker.t));
+      if (flicker.t > FLICKER_KEYS[FLICKER_KEYS.length - 1][0]) { flicker.t = -1; applyLight(1); }
+    }
 
+    camOffset.set(Math.sin(state.polar) * Math.sin(state.az), Math.cos(state.polar), Math.sin(state.polar) * Math.cos(state.az)).multiplyScalar(state.dist);
+    camera.position.copy(TARGET).add(camOffset);
+    camera.lookAt(TARGET);
+  }
+
+  function frame() {
+    var dt = Math.min(clock.getDelta(), 0.1);
+    update(dt);
     renderer.render(scene, camera);
     trackPerformance(dt);
   }
 
-  // ---------- test hooks (only with ?test) ----------
+  // ---------- test hooks (only with ?test): a manual clock so captures do not depend on render speed ----------
   if (TEST) {
     window.__apple = {
-      setPose: function (yaw, pitch, dist, autoT) {
-        state.yaw = yaw; state.pitch = pitch; state.dist = state.targetDist = dist;
-        state.yawVel = state.pitchVel = 0; state.resetting = false;
-        if (autoT !== undefined) state.autoT = autoT;
+      setPose: function (az, polar, dist) {
+        state.az = az; state.polar = polar; state.dist = state.targetDist = dist;
+        state.azVel = state.polarVel = 0; state.resetting = false;
       },
-      setSpin: setSpin, setLeaf: setLeaf,
-      state: state,
-      renderOnce: function () { frame(); },
+      setSpin: setSpin, setLeaf: setLeaf, drop: startDrop,
+      manual: function () { renderer.setAnimationLoop(null); },
+      advance: function (sec) {
+        var n = Math.max(1, Math.round(sec * 120));
+        for (var i = 0; i < n; i++) update(sec / n);
+        renderer.render(scene, camera);
+        return { y: body.y, lowest: body.lowest, light: flicker.level, impacts: body.impacts, active: body.active };
+      },
       dropWorldPositions: function () {
         scene.updateMatrixWorld(true);
         return dropMeshes.filter(function (d) { return !d.trail; }).map(function (d) {
@@ -1089,7 +1305,10 @@ window.__restoreWarn && window.__restoreWarn();
     document.getElementById('controls').hidden = false;
     stats.ready = true;
     clock.getDelta();
+    body.y = DROP_HEIGHT; body.active = false;
     renderer.setAnimationLoop(frame);
+    // let the first frames settle before the apple falls
+    if (!TEST) setTimeout(startDrop, 700);
   }, 30);
 })();
 </script>
