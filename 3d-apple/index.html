@@ -135,7 +135,7 @@ window.__restoreWarn && window.__restoreWarn();
     shadowMap: isMobile ? 1024 : 2048,
     drops: isMobile ? 45 : 64,
     lenticels: isMobile ? 2200 : 3000,
-    woodTex: isMobile ? 512 : 1024
+    woodTex: isMobile ? 768 : 1536
   };
 
   // ---------- deterministic random + Perlin noise ----------
@@ -233,7 +233,7 @@ window.__restoreWarn && window.__restoreWarn();
 
   function makeAppleTextures(W, footprints) {
     var H = W / 2;
-    var w = Math.round(W * 3 / 8), h = w / 2;
+    var w = Math.round(W * (isMobile ? 3 / 8 : 1 / 2)), h = w / 2;
     var colC = makeCanvas(w, h), bumpC = makeCanvas(w, h);
     var cctx = colC.getContext('2d'), bctx = bumpC.getContext('2d');
     var cimg = cctx.createImageData(w, h), bimg = bctx.createImageData(w, h);
@@ -298,7 +298,7 @@ window.__restoreWarn && window.__restoreWarn();
     // full-resolution fine streaks along the meridians
     var i;
     c2.lineCap = 'round';
-    for (i = 0; i < 9000; i++) {
+    for (i = 0; i < (isMobile ? 9000 : 22000); i++) {
       var yv = -0.85 + rnd() * 1.6;
       var th = Math.acos(yv), sn = Math.max(Math.sin(th), 0.2);
       var x0 = rnd() * W, y0 = th / Math.PI * H;
@@ -336,6 +336,10 @@ window.__restoreWarn && window.__restoreWarn();
         c2.restore();
         b2.fillStyle = 'rgba(255,255,255,0.2)';
         b2.beginPath(); b2.ellipse(xx, yy, r0 / s, r0, 0, 0, Math.PI * 2); b2.fill();
+        if (r0 > 1.3 * scale) {
+          c2.fillStyle = 'rgba(120,70,40,' + (a * 0.6).toFixed(3) + ')';
+          c2.beginPath(); c2.ellipse(xx, yy, r0 * 0.35 / s, r0 * 0.35, 0, 0, Math.PI * 2); c2.fill();
+        }
       });
     }
 
@@ -492,45 +496,262 @@ window.__restoreWarn && window.__restoreWarn();
   var fill = new THREE.HemisphereLight(0x9fb0c8, 0x5a3418, 0.22);
   scene.add(fill);
 
+  // ---------- tileable micro detail (height in R, colour factor in G, roughness factor in B) ----------
+  function hash2(x, y, s) {
+    var h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(s | 0, 2246822519);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+  // value noise on a lattice that repeats every px by py cells
+  function tileNoise(x, y, px, py, seed) {
+    var X = Math.floor(x), Y = Math.floor(y), fx = x - X, fy = y - Y;
+    var x0 = ((X % px) + px) % px, y0 = ((Y % py) + py) % py, x1 = (x0 + 1) % px, y1 = (y0 + 1) % py;
+    var u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    var a = hash2(x0, y0, seed), b = hash2(x1, y0, seed), c = hash2(x0, y1, seed), d = hash2(x1, y1, seed);
+    return (a + (b - a) * u) + ((c + (d - c) * u) - (a + (b - a) * u)) * v - 0.5;
+  }
+  // distance to the nearest feature point on a repeating jittered grid of n by n cells
+  function tileCells(x, y, n, seed) {
+    var X = Math.floor(x), Y = Math.floor(y), best = 9, second = 9;
+    for (var j = -1; j <= 1; j++) for (var i = -1; i <= 1; i++) {
+      var cx = X + i, cy = Y + j;
+      var wx = ((cx % n) + n) % n, wy = ((cy % n) + n) % n;
+      var dx = cx + hash2(wx, wy, seed) - x, dy = cy + hash2(wx, wy, seed + 7) - y;
+      var d = dx * dx + dy * dy;
+      if (d < best) { second = best; best = d; } else if (d < second) second = d;
+    }
+    return [Math.sqrt(best), Math.sqrt(second)];
+  }
+
+  function makeSkinDetail(S) {
+    var c = makeCanvas(S, S), x = c.getContext('2d'), img = x.createImageData(S, S), d = img.data;
+    var CELLS = 26;
+    for (var py = 0; py < S; py++) {
+      for (var px = 0; px < S; px++) {
+        var u = px / S, v = py / S;
+        var cl = tileCells(u * CELLS, v * CELLS, CELLS, 11);
+        var dome = Math.min(cl[0] * 1.6, 1);
+        var edge = smoothstep(0.0, 0.12, cl[1] - cl[0]);         // thin creases between skin cells
+        var streak = tileNoise(u * 48, v * 3, 48, 3, 5) * 0.7 + tileNoise(u * 120, v * 6, 120, 6, 9) * 0.3; // along the meridians
+        var speck = tileNoise(u * 64, v * 64, 64, 64, 21);
+        var h = 0.5 + 0.14 * (1 - dome) - 0.05 * (1 - edge) + 0.22 * streak + 0.08 * speck;
+        var col = 0.5 + 0.4 * streak + 0.05 * (1 - dome) + (speck > 0.36 ? 0.15 : 0);
+        var rough = 0.5 + 0.25 * speck - 0.2 * streak + 0.12 * (1 - edge);
+        var i4 = (py * S + px) * 4;
+        d[i4] = clamp01(h) * 255; d[i4 + 1] = clamp01(col) * 255; d[i4 + 2] = clamp01(rough) * 255; d[i4 + 3] = 255;
+      }
+    }
+    x.putImageData(img, 0, 0);
+    return detailTexture(c);
+  }
+
+  function makeWoodDetail(S) {
+    var c = makeCanvas(S, S), x = c.getContext('2d'), img = x.createImageData(S, S), d = img.data;
+    for (var py = 0; py < S; py++) {
+      for (var px = 0; px < S; px++) {
+        var u = px / S, v = py / S;
+        // fibres run along u: stretched noise, short open pores as dark dashes
+        var fibre = tileNoise(u * 6, v * 90, 6, 90, 3) * 0.6 + tileNoise(u * 14, v * 220, 14, 220, 4) * 0.4;
+        var pore = tileNoise(u * 40, v * 150, 40, 150, 8);
+        var blot = tileNoise(u * 4, v * 4, 4, 4, 12);
+        var p = pore > 0.3 ? (pore - 0.3) * 5 : 0;
+        var h = 0.5 + 0.35 * fibre - 0.45 * p;
+        var col = 0.5 + 0.3 * fibre - 0.35 * p + 0.1 * blot;
+        var rough = 0.5 + 0.2 * p + 0.25 * blot + 0.1 * fibre;
+        var i4 = (py * S + px) * 4;
+        d[i4] = clamp01(h) * 255; d[i4 + 1] = clamp01(col) * 255; d[i4 + 2] = clamp01(rough) * 255; d[i4 + 3] = 255;
+      }
+    }
+    x.putImageData(img, 0, 0);
+    // fine varnish scratches: they catch light in the roughness and relief only
+    var rnd = mulberry32(77);
+    x.globalCompositeOperation = 'source-over';
+    for (var i = 0; i < 70; i++) {
+      var sx = rnd() * S, sy = rnd() * S, len = S * (0.05 + 0.25 * rnd()), ang = rnd() * Math.PI;
+      var ex = sx + Math.cos(ang) * len, ey = sy + Math.sin(ang) * len;
+      x.strokeStyle = 'rgba(70,128,40,' + (0.25 + 0.35 * rnd()).toFixed(2) + ')';
+      x.lineWidth = 0.6 + rnd();
+      for (var ox = -S; ox <= S; ox += S) for (var oy = -S; oy <= S; oy += S) {
+        x.beginPath(); x.moveTo(sx + ox, sy + oy); x.quadraticCurveTo((sx + ex) / 2 + ox + 6, (sy + ey) / 2 + oy, ex + ox, ey + oy); x.stroke();
+      }
+    }
+    return detailTexture(c);
+  }
+
+  function detailTexture(c) {
+    var t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = maxAniso;
+    return t;
+  }
+
+  var DETAIL_PARS = [
+    'uniform sampler2D detailMap;',
+    'uniform vec2 detailRepeat;',
+    'uniform vec3 detailAmount;',
+    'vec4 detailSample( vec2 uv ) { return texture2D( detailMap, uv * detailRepeat ); }',
+    '#ifdef USE_BUMPMAP',
+    'uniform sampler2D bumpMap;',
+    'uniform float bumpScale;',
+    'float detailHeight( vec2 uv ) { return texture2D( bumpMap, uv ).x + detailAmount.x * ( detailSample( uv ).r - 0.5 ); }',
+    'vec2 dHdxy_fwd() {',
+    '  vec2 dSTdx = dFdx( vBumpMapUv );',
+    '  vec2 dSTdy = dFdy( vBumpMapUv );',
+    '  float Hll = bumpScale * detailHeight( vBumpMapUv );',
+    '  float dBx = bumpScale * detailHeight( vBumpMapUv + dSTdx ) - Hll;',
+    '  float dBy = bumpScale * detailHeight( vBumpMapUv + dSTdy ) - Hll;',
+    '  return vec2( dBx, dBy );',
+    '}',
+    'vec3 perturbNormalArb( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection ) {',
+    '  vec3 vSigmaX = normalize( dFdx( surf_pos.xyz ) );',
+    '  vec3 vSigmaY = normalize( dFdy( surf_pos.xyz ) );',
+    '  vec3 vN = surf_norm;',
+    '  vec3 R1 = cross( vSigmaY, vN );',
+    '  vec3 R2 = cross( vN, vSigmaX );',
+    '  float fDet = dot( vSigmaX, R1 ) * faceDirection;',
+    '  vec3 vGrad = sign( fDet ) * ( dHdxy.x * R1 + dHdxy.y * R2 );',
+    '  return normalize( abs( fDet ) * surf_norm - vGrad );',
+    '}',
+    '#endif'
+  ].join('\n');
+
+  // layers a repeating micro texture over the material's own map, bump map and roughness;
+  // requires the material to have map and bumpMap
+  function addDetail(material, tex, repeat, amount, key) {
+    var u = {
+      detailMap: { value: tex },
+      detailRepeat: { value: new THREE.Vector2(repeat[0], repeat[1]) },
+      detailAmount: { value: new THREE.Vector3(amount[0], amount[1], amount[2]) }
+    };
+    material.onBeforeCompile = function (shader) {
+      shader.uniforms.detailMap = u.detailMap;
+      shader.uniforms.detailRepeat = u.detailRepeat;
+      shader.uniforms.detailAmount = u.detailAmount;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <bumpmap_pars_fragment>', DETAIL_PARS)
+        .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb *= 1.0 + detailAmount.y * ( detailSample( vMapUv ).g - 0.5 ) * 2.0;')
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\troughnessFactor = clamp( roughnessFactor * ( 1.0 + detailAmount.z * ( detailSample( vMapUv ).b - 0.5 ) * 2.0 ), 0.02, 1.0 );');
+    };
+    material.customProgramCacheKey = function () { return 'detail-' + key; };
+  }
+
+  // bark of the stem: fibres along the tube (u) with a few pale spots; multiplies the vertex colours
+  function makeStemTextures() {
+    var W = 512, H = 128;
+    var c = makeCanvas(W, H), x = c.getContext('2d');
+    var b = makeCanvas(W, H), y = b.getContext('2d');
+    x.fillStyle = '#d8d8d8'; x.fillRect(0, 0, W, H);
+    y.fillStyle = '#808080'; y.fillRect(0, 0, W, H);
+    var rnd = mulberry32(31);
+    for (var i = 0; i < 260; i++) {
+      var yy = rnd() * H, x0 = rnd() * W, len = 40 + rnd() * 220, dark = rnd() < 0.6;
+      var w = 0.6 + rnd() * 1.6;
+      for (var o = -H; o <= H; o += H) {
+        x.strokeStyle = dark ? 'rgba(60,40,25,' + (0.2 + 0.35 * rnd()).toFixed(2) + ')' : 'rgba(255,240,220,' + (0.15 + 0.2 * rnd()).toFixed(2) + ')';
+        x.lineWidth = w;
+        x.beginPath(); x.moveTo(x0, yy + o); x.lineTo(x0 + len, yy + o + (rnd() - 0.5) * 3); x.stroke();
+        y.strokeStyle = dark ? 'rgba(20,20,20,0.6)' : 'rgba(230,230,230,0.5)';
+        y.lineWidth = w;
+        y.beginPath(); y.moveTo(x0, yy + o); y.lineTo(x0 + len, yy + o); y.stroke();
+      }
+    }
+    for (i = 0; i < 40; i++) {
+      var sx = rnd() * W, sy = rnd() * H;
+      x.fillStyle = 'rgba(235,215,180,0.45)';
+      x.beginPath(); x.ellipse(sx, sy, 3 + rnd() * 3, 1 + rnd(), 0, 0, Math.PI * 2); x.fill();
+      y.fillStyle = 'rgba(255,255,255,0.5)';
+      y.beginPath(); y.ellipse(sx, sy, 3, 1.2, 0, 0, Math.PI * 2); y.fill();
+    }
+    var t1 = new THREE.CanvasTexture(c), t2 = new THREE.CanvasTexture(b);
+    t1.colorSpace = THREE.SRGBColorSpace;
+    t1.wrapT = t2.wrapT = THREE.RepeatWrapping;
+    t1.anisotropy = t2.anisotropy = maxAniso;
+    return { color: t1, bump: t2 };
+  }
+
+  // the snapped end of the stem: pale wood with growth rings around the pole of the cap sphere
+  function makeStemEndTexture() {
+    var W = 128, H = 128, c = makeCanvas(W, H), x = c.getContext('2d');
+    for (var yy = 0; yy < H; yy++) {
+      var v = yy / H;
+      var ring = 0.5 + 0.5 * Math.sin(v * 70 + Math.sin(v * 9) * 2);
+      var core = v < 0.06 ? 0.6 : 1;
+      var r = (150 - 40 * ring) * core, g = (118 - 34 * ring) * core, b = (78 - 24 * ring) * core;
+      if (v > 0.35) { r = 80; g = 56; b = 34; } // bark on the sides
+      x.fillStyle = 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+      x.fillRect(0, yy, W, 1);
+    }
+    var t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
   // ---------- table ----------
   function makeWoodTextures(S) {
-    var col = makeCanvas(S, S), bmp = makeCanvas(S, S);
-    var cx = col.getContext('2d'), bx = bmp.getContext('2d');
-    var ci = cx.createImageData(S, S), bi = bx.createImageData(S, S);
-    var cd = ci.data, bd = bi.data;
+    var col = makeCanvas(S, S), bmp = makeCanvas(S, S), rgh = makeCanvas(S, S);
+    var cx = col.getContext('2d'), bx = bmp.getContext('2d'), rx = rgh.getContext('2d');
+    var ci = cx.createImageData(S, S), bi = bx.createImageData(S, S), ri = rx.createImageData(S, S);
+    var cd = ci.data, bd = bi.data, rd = ri.data;
     var PLANKS = 4, TAU = Math.PI * 2;
     var LIGHT = [148, 96, 56], DARKW = [92, 56, 30];
     var tint = [1.0, 0.84, 1.1, 0.92];
+    // per plank: one end joint and up to two knots (positions in tile u, plank v)
+    var rnd = mulberry32(404), planks = [];
+    for (var k = 0; k < PLANKS; k++) {
+      var knots = [], nk = (k === 1 || k === 3) ? 1 : 0;
+      for (var q = 0; q < nk; q++) knots.push({ u: rnd(), v: 0.3 + 0.4 * rnd(), r: 0.03 + 0.02 * rnd() });
+      planks.push({ joint: rnd(), knots: knots });
+    }
     for (var py = 0; py < S; py++) {
       var y = (py + 0.5) / S;
       var pl = Math.floor(y * PLANKS), v = y * PLANKS - pl, o = pl * 17.3 + 3;
-      var seam = Math.min(v, 1 - v) * S / PLANKS; // distance to plank edge in pixels
+      var seam = Math.min(v, 1 - v) * S / PLANKS; // distance to the long plank edge in pixels
+      var P = planks[pl];
       for (var px = 0; px < S; px++) {
         var x = (px + 0.5) / S;
         var ca = Math.cos(TAU * x), sa = Math.sin(TAU * x);
-        // noise that wraps around x so the texture tiles
-        // nearly straight grain along the plank with a gentle drift, thin late-wood lines and long fibres
+        // nearly straight grain along the plank with a gentle drift (noise wraps around x so the texture tiles)
         var warp = noise(ca * 0.7 + o, sa * 0.7, v * 1.3) * 0.22 + noise(ca * 2.5, sa * 2.5 + o, v * 3) * 0.04;
-        var rings = (v + warp) * 16 + o;
+        // knots pull the growth lines into closed rings around them
+        var knotCore = 0;
+        for (var n = 0; n < P.knots.length; n++) {
+          var K = P.knots[n];
+          var du = x - K.u; du -= Math.round(du);
+          var dxp = du * PLANKS * 0.3, dv = v - K.v; // stretched along the grain: flat-sawn knots are long ovals
+          var dist = Math.sqrt(dxp * dxp + dv * dv);
+          warp += 0.35 * K.r * Math.exp(-(dist * dist) / (K.r * K.r * 16)) / (dist + K.r) * Math.sign(dv || 1);
+          knotCore = Math.max(knotCore, 0.8 * smoothstep(K.r * 0.8, K.r * 0.15, dist));
+        }
+        var rings = (v + warp) * 22 + o;
         var t = 0.5 + 0.5 * Math.sin(rings * TAU);
-        var late = smoothstep(0.7, 0.98, t);
+        var late = smoothstep(0.8, 0.995, t);
         var fibre = noise(ca * 28 + o, sa * 28, v * 160);
         var pore = noise(ca * 60, sa * 60 + o, v * 420);
         var fine = noise(ca * 6, sa * 6 + o, v * 40);
-        var m = clamp01(0.55 * late + 0.22 * (fibre + 0.5) * 0.8 + 0.12 * fine + (pore > 0.38 ? 0.18 : 0));
-        var k = tint[pl] * (0.94 + 0.12 * noise(ca * 1.2 + 9, sa * 1.2, o));
-        var r = (LIGHT[0] + (DARKW[0] - LIGHT[0]) * m) * k;
-        var g = (LIGHT[1] + (DARKW[1] - LIGHT[1]) * m) * k;
-        var b = (LIGHT[2] + (DARKW[2] - LIGHT[2]) * m) * k;
-        var h = 150 - 30 * late - 14 * fibre - 30 * (pore > 0.38 ? 1 : 0) + 8 * fine;
-        if (seam < 2.2) { var s = seam / 2.2; r *= 0.25 + 0.75 * s; g *= 0.25 + 0.75 * s; b *= 0.25 + 0.75 * s; h = 40 + 110 * s; }
+        var m = clamp01(0.42 * late + 0.25 * (fibre + 0.5) * 0.8 + 0.15 * fine + (pore > 0.38 ? 0.18 : 0) + 0.75 * knotCore);
+        var kk = tint[pl] * (0.94 + 0.12 * noise(ca * 1.2 + 9, sa * 1.2, o));
+        var r = (LIGHT[0] + (DARKW[0] - LIGHT[0]) * m) * kk;
+        var g = (LIGHT[1] + (DARKW[1] - LIGHT[1]) * m) * kk;
+        var b = (LIGHT[2] + (DARKW[2] - LIGHT[2]) * m) * kk;
+        if (knotCore > 0) { r *= 1 - 0.35 * knotCore; g *= 1 - 0.4 * knotCore; b *= 1 - 0.45 * knotCore; }
+        var h = 150 - 30 * late - 14 * fibre - 30 * (pore > 0.38 ? 1 : 0) + 8 * fine - 25 * knotCore;
+        var rough = 200 + 30 * late + 18 * fibre + 25 * noise(ca * 3 + 5, sa * 3, v * 2 + o) + 30 * knotCore;
+        // edges: long seam between planks and one butt joint across each plank
+        var dj = x - P.joint; dj -= Math.round(dj);
+        var joint = Math.abs(dj) * S;
+        var edge = Math.min(seam / 2.2, joint / 1.6, 1);
+        if (edge < 1) {
+          var e = 0.25 + 0.75 * edge;
+          r *= e; g *= e; b *= e; h = 40 + 110 * edge; rough = 255;
+        }
         var i4 = (py * S + px) * 4;
         cd[i4] = r; cd[i4 + 1] = g; cd[i4 + 2] = b; cd[i4 + 3] = 255;
         bd[i4] = bd[i4 + 1] = bd[i4 + 2] = h; bd[i4 + 3] = 255;
+        rd[i4] = rd[i4 + 1] = rd[i4 + 2] = Math.min(rough, 255); rd[i4 + 3] = 255;
       }
     }
-    cx.putImageData(ci, 0, 0); bx.putImageData(bi, 0, 0);
-    return { color: col, bump: bmp };
+    cx.putImageData(ci, 0, 0); bx.putImageData(bi, 0, 0); rx.putImageData(ri, 0, 0);
+    return { color: col, bump: bmp, rough: rgh };
   }
 
   var TABLE_TILE = 16; // one texture tile covers 16 units = 64 cm, four planks of 16 cm
@@ -548,8 +769,10 @@ window.__restoreWarn && window.__restoreWarn();
     }
     tableMat = new THREE.MeshPhysicalMaterial({
       map: prep(tex.color, true), bumpMap: prep(tex.bump, false), bumpScale: 1.0,
-      roughness: 0.55, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.35, envMapIntensity: 0.35
+      roughnessMap: prep(tex.rough, false),
+      roughness: 0.62, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.35, envMapIntensity: 0.35
     });
+    addDetail(tableMat, makeWoodDetail(isMobile ? 256 : 512), [4, 16], [0.7, 0.1, 0.4], 'wood');
     var table = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), tableMat);
     table.rotation.x = -Math.PI / 2;
     table.rotation.z = 0.12; // planks run slightly across the view
@@ -616,6 +839,7 @@ window.__restoreWarn && window.__restoreWarn();
       sheenColor: new THREE.Color(0xff9a8a),
       envMapIntensity: 1.0
     });
+    addDetail(skin, makeSkinDetail(isMobile ? 256 : 512), [64, 32], [0.22, 0.07, 0.3], 'skin');
     var apple = new THREE.Mesh(geo, skin);
     apple.castShadow = true;
     apple.receiveShadow = true;
@@ -651,13 +875,14 @@ window.__restoreWarn && window.__restoreWarn();
     }
     stemGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     stemGeo.computeVertexNormals();
-    var stemMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0 });
+    var bark = makeStemTextures();
+    var stemMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: bark.color, bumpMap: bark.bump, bumpScale: 1.5, roughness: 0.72, metalness: 0 });
     var stem = new THREE.Mesh(stemGeo, stemMat);
     stem.castShadow = true; stem.receiveShadow = true;
     spin.add(stem);
     // soft rounded end
     var endR = 0.026 * 0.75 + 0.011;
-    var cap = new THREE.Mesh(new THREE.SphereGeometry(endR * 1.02, 20, 12), new THREE.MeshStandardMaterial({ color: 0x7a5c3c, roughness: 0.8 }));
+    var cap = new THREE.Mesh(new THREE.SphereGeometry(endR * 1.02, 20, 12), new THREE.MeshStandardMaterial({ map: makeStemEndTexture(), roughness: 0.85 }));
     var endP = stemCurve.getPointAt(1), endT = stemCurve.getTangentAt(1);
     cap.position.copy(endP);
     cap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), endT);
@@ -685,6 +910,17 @@ window.__restoreWarn && window.__restoreWarn();
     eye.rotation.x = Math.PI / 2;
     eye.position.y = -0.001;
     calyx.add(eye);
+    var hairMat = new THREE.MeshStandardMaterial({ color: 0x2a1d12, roughness: 1 });
+    var hairGeo = new THREE.CylinderGeometry(0.0012, 0.0018, 0.03, 4, 1);
+    hairGeo.translate(0, -0.015, 0);
+    var hr = mulberry32(17);
+    for (var hI = 0; hI < 24; hI++) {
+      var hair = new THREE.Mesh(hairGeo, hairMat);
+      var ha = hr() * Math.PI * 2, hd = hr() * 0.018;
+      hair.position.set(Math.cos(ha) * hd, 0, Math.sin(ha) * hd);
+      hair.rotation.set((hr() - 0.5) * 1.2, 0, (hr() - 0.5) * 1.2);
+      calyx.add(hair);
+    }
     spin.add(calyx);
 
     // --- leaf (hidden by default) ---
