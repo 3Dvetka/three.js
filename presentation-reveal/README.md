@@ -6,7 +6,7 @@
 
 Сборка:
 1. `npm install`
-2. Скачать исходные фото CC0 в `raw/` и выполнить `python3 tools/prepare_assets.py` (результат уже лежит в `src/assets/`).
+2. Скачать исходные фото (Apple tree at Dehibolo 2021 — CC BY 4.0, PJakopin; Red apple with leaf — CC0) в `raw/` и выполнить `python3 tools/prepare_assets.py` (результат уже лежит в `src/assets/`).
 3. Схемы: `python manim/render.py S2 S3 S4 S5 S6 S7` (Manim 0.19.0, нужен `libpango1.0-dev`; результат уже в `src/diagrams/`).
 4. `python3 build.py` (для встраивания шрифта Carlito нужен `fonttools` + `brotli`).
 5. Проверка: `node tools/check.js` (Playwright, Chromium).

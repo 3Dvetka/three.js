@@ -27,8 +27,9 @@
   выберите «Открыть с помощью» и укажите браузер.
 
 ЛИЦЕНЗИИ
-- Фото фона: «Tree with red apples in Barkedal 2.jpg», Wikimedia Commons, CC0.
-- Фото яблока и фактура кожуры: «Red apple with leaf.jpg», Wikimedia Commons, CC0.
+- Фото фона: «Apple tree at Dehibolo 2021.jpg», автор PJakopin, Wikimedia Commons,
+  лицензия CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+- Фактура кожуры и запасное фото яблока: «Red apple with leaf.jpg», Wikimedia Commons, CC0.
 - reveal.js 5.1.0 — MIT. three.js r160 — MIT. Manim Community 0.19.0 — MIT (схемы отрисованы заранее).
 - GSAP 3.12.5 — стандартная бесплатная лицензия GreenSock.
 - Шрифт Carlito — SIL Open Font License 1.1.

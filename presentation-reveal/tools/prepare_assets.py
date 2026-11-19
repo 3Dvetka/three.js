@@ -14,10 +14,9 @@ os.makedirs(OUT, exist_ok=True)
 
 
 def tree():
-    im = Image.open(os.path.join(RAW, 'Tree_with_red_apples_in_Barkedal_2.jpg')).convert('RGB')
-    w = 2560
-    im = im.resize((w, round(im.height * w / im.width)), Image.LANCZOS)
-    im.save(os.path.join(OUT, 'tree.webp'), 'WEBP', quality=80, method=6)
+    # «Apple tree at Dehibolo 2021.jpg», PJakopin, CC BY 4.0 (миниатюра 1920x2560)
+    im = Image.open(os.path.join(RAW, 'Apple_tree_at_Dehibolo_2021.jpg')).convert('RGB')
+    im.save(os.path.join(OUT, 'tree.webp'), 'WEBP', quality=84, method=6)
     print('tree', im.size, os.path.getsize(os.path.join(OUT, 'tree.webp')))
 
 
@@ -63,36 +62,61 @@ def apple_photo():
     print('apple', bbox, os.path.getsize(os.path.join(OUT, 'apple.webp')))
 
 
+def periodic_noise(h, w, cutoff, rng):
+    """Гладкий шум, бесшовный по обеим осям (фильтр в частотной области)."""
+    n = rng.standard_normal((h, w))
+    fy = np.fft.fftfreq(h)[:, None] * h
+    fx = np.fft.fftfreq(w)[None, :] * w
+    f = np.exp(-((fx / cutoff[0]) ** 2 + (fy / cutoff[1]) ** 2))
+    out = np.real(np.fft.ifft2(np.fft.fft2(n) * f))
+    out -= out.min(); out /= out.max()
+    return out
+
+
 def skin():
+    """Кожура для 3D-яблока: жёлто-оранжевая основа, красный румянец полосками, светлые крапинки,
+    фактура пор с ровного участка реального фото. Бесшовно по u. v=1 (верх картинки) — черенок."""
+    H_, W_ = 512, 1024
+    rng = np.random.default_rng(11)
     src = Image.open(os.path.join(RAW, 'Red_apple_with_leaf.jpg')).convert('RGB')
     k = src.width / 2048.0
     box = tuple(round(v * k) for v in (560, 680, 1080, 1200))
     c = src.crop(box).convert('L').resize((512, 512), Image.LANCZOS)
     a = np.asarray(c).astype(np.float32) + 1
     blur = np.asarray(c.filter(ImageFilter.GaussianBlur(18))).astype(np.float32) + 1
-    detail = a / blur                      # только фактура (поры, крапинки)
-    detail = 1 + (detail - 1) * 0.5        # в половину силы
-    # зеркальный бесшовный тайл 1024x512 (по u дважды, зеркально)
+    detail = 1 + (a / blur - 1) * 0.45
     tile = np.concatenate([detail, detail[:, ::-1]], 1)
-    tile = np.concatenate([tile[:256], tile[:256][::-1]], 0)  # бесшовно и по v
-    tile = np.asarray(Image.fromarray(np.clip(tile * 128, 0, 255).astype(np.uint8)).resize((1024, 512), Image.LANCZOS)).astype(np.float32) / 128
-    # градиент цвета снизу (v=0 — низ) вверх: в three.js LatheGeometry v=0 у низа
-    stops = ['#c4963a', '#cd4e2c', '#c42a22', '#a01a18', '#601c12']
-    stops = [np.array([int(s[i:i + 2], 16) for i in (1, 3, 5)], np.float32) for s in stops]
-    pos = np.array([0.0, 0.16, 0.45, 0.8, 1.0])
-    ys = np.linspace(0, 1, 512)
-    grad = np.stack([np.interp(ys, pos, [s[ch] for s in stops]) for ch in range(3)], 1)
-    grad = grad[::-1]  # строка 0 изображения — верх текстуры (v=1)
-    img = np.repeat(grad[:, None, :], 1024, 1)
-    # лёгкая неравномерность румянца
-    rng = np.random.default_rng(7)
-    noise = rng.random((16, 32)).astype(np.float32)
-    noise = np.asarray(Image.fromarray((noise * 255).astype(np.uint8)).resize((1024, 512), Image.BICUBIC).filter(ImageFilter.GaussianBlur(30))).astype(np.float32) / 255
-    blush = 0.88 + 0.24 * noise
-    img = img * blush[..., None]
-    img = img * tile[..., None]
-    out = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
-    out.save(os.path.join(OUT, 'apple_skin.webp'), 'WEBP', quality=84, method=6)
+    tile = np.concatenate([tile[:256], tile[:256][::-1]], 0)
+    tile = np.asarray(Image.fromarray(np.clip(tile * 128, 0, 255).astype(np.uint8)).resize((W_, H_), Image.LANCZOS)).astype(np.float32) / 128
+
+    v = np.linspace(1, 0, H_)[:, None]          # 1 — верх (черенок), 0 — низ
+    big = periodic_noise(H_, W_, (3, 2), rng)    # крупные пятна румянца
+    streak = periodic_noise(H_, W_, (34, 2.5), rng)  # вертикальные полоски
+    cov = 0.6 * big + 0.4 * streak + 0.3 * (v - 0.35)
+    cov = np.clip((cov - 0.12) / 0.42, 0, 1)
+    cov = cov ** 0.8
+    ground = np.array([226, 182, 92], np.float32)   # жёлто-оранжевая основа
+    blush = np.array([198, 58, 36], np.float32)     # румянец
+    deep = np.array([150, 36, 26], np.float32)      # густой красный
+    col = ground * (1 - cov[..., None]) + blush * cov[..., None]
+    dd = np.clip((cov - 0.7) / 0.3, 0, 1)[..., None] * (0.35 + 0.4 * streak[..., None])
+    col = col * (1 - dd) + deep * dd
+    # у черенка — зеленовато-бурая воронка, снизу — тёмная чашечка
+    top = np.clip((v - 0.9) / 0.1, 0, 1)[..., None]
+    col = col * (1 - top * .55) + np.array([120, 104, 52], np.float32) * top * .55
+    bot = np.clip((0.07 - v) / 0.07, 0, 1)[..., None]
+    col = col * (1 - bot * .5) + np.array([110, 80, 40], np.float32) * bot * .5
+    col *= tile[..., None]
+    img = Image.fromarray(np.clip(col, 0, 255).astype(np.uint8))
+    # светлые крапинки (чечевички): гуще и крупнее к низу
+    d = ImageDraw.Draw(img)
+    for _ in range(700):
+        x = rng.uniform(0, W_); y = rng.uniform(H_ * .06, H_ * .92)
+        r = rng.uniform(.6, 1.5) * (0.8 + 0.6 * y / H_)
+        for xx in (x, x - W_, x + W_):
+            d.ellipse([xx - r, y - r * .8, xx + r, y + r * .8], fill=(232, 196, 140))
+    img = img.filter(ImageFilter.GaussianBlur(.5))
+    img.save(os.path.join(OUT, 'apple_skin.webp'), 'WEBP', quality=88, method=6)
     print('skin', os.path.getsize(os.path.join(OUT, 'apple_skin.webp')))
 
 

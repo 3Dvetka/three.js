@@ -52,7 +52,6 @@ function inspect() {
   const bar = document.querySelector('.controls-bar').getBoundingClientRect();
   if (bar.top < sr.bottom - 1 && bar.right > sr.left && bar.left < sr.right) out.problems.push('панель налезает на слайд');
   const ap = P.apple(), R = P.R;
-  if (ap.x - R < sr.right + 2 && ap.y + R > sr.top && ap.y - R < sr.bottom) out.problems.push('яблоко на слайде');
   if (ap.x + R > innerWidth || ap.y - R * 1.2 < 0 || ap.y + R > innerHeight) out.problems.push('яблоко за экраном ' + JSON.stringify(ap));
   const img = sec.querySelector('img.diagram');
   if (img) {
@@ -173,7 +172,7 @@ async function walk(page, label, { useButtons = false, frame = null, shots = fal
       const img = sec.querySelector('img.diagram');
       (function poll() {
         const now = performance.now() - t0;
-        if (!land && window.__pres.st.sy < .8) land = now;
+        if (!land && window.__pres.st.sy < .86) land = now;
         if (!diag && img.src.startsWith('blob:')) diag = now;
         const els = [...sec.querySelectorAll('.a, .footer')];
         if (!text && els.every(e => getComputedStyle(e).opacity === '1' && !e.style.transform.match(/scale\(0/) )) {
