@@ -1,0 +1,11 @@
+{
+  "name": "presentation-reveal",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Император и старец — презентация (reveal.js + GSAP + three.js + Manim)",
+  "devDependencies": {
+    "gsap": "3.12.5",
+    "reveal.js": "5.1.0",
+    "three": "0.160.0"
+  }
+}

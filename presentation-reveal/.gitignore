@@ -1,0 +1,5 @@
+node_modules/
+raw/
+shots/
+dist/artifact.html
+manim/__pycache__/

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Император и старец</title>
+<style>{{FONTS}}</style>
+<style>{{REVEAL_CSS}}</style>
+<style>{{STYLE}}</style>
+</head>
+<body>
+<div id="scene"><img id="tree" src="{{TREE}}" alt="" draggable="false"></div>
+<div id="scrim"></div>
+<img id="hero" src="{{APPLE}}" alt="" draggable="false">
+<canvas id="apple3d" aria-hidden="true"></canvas>
+<div id="fx" aria-hidden="true"></div>
+<div class="reveal"><div class="slides">
+{{SLIDES}}
+</div></div>
+<nav class="controls-bar" aria-label="Управление">
+  <button type="button" id="btn-prev">Назад</button>
+  <div class="prog"><div class="track"><div class="fill" id="prog-fill"></div></div><span class="num" id="prog-num">1 / 8</span></div>
+  <button type="button" id="btn-fs">Во весь экран</button>
+  <button type="button" id="btn-next">Вперёд</button>
+</nav>
+<script>{{REVEAL_JS}}</script>
+<script>{{GSAP_JS}}</script>
+<script>{{THREE_JS}}</script>
+<script>window.__SPEED = {{SPEED}}; window.__SKIN = "{{APPLE_SKIN}}"; window.__DIAGRAMS = {{DIAGRAMS}};</script>
+<script>{{APP_JS}}</script>
+</body>
+</html>
