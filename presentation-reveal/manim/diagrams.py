@@ -5,15 +5,16 @@ from manim import *
 
 U = 1 / 75
 FONT = "Carlito"
-DARK = "#26322b"
-DARK2 = "#4a5a50"
+DARK = "#f3efe6"     # тёмная тема: светлый текст на тёмных плашках
+DARK2 = "#c9c2b4"
 GOLD = "#f2c86b"
+# тёмные варианты той же палитры: верх лица, низ лица, кромка, цветной ободок
 PAL = {
-    "rose":  ("#ffe1dc", "#f2b2a8", "#c98479"),
-    "sage":  ("#e0f3e6", "#b3dcc1", "#7fae90"),
-    "sky":   ("#e1edfc", "#b3cdef", "#7f9fcc"),
-    "lilac": ("#ebe5fc", "#cbc0f0", "#988bc7"),
-    "sand":  ("#fcefd4", "#f0d3a0", "#c6a46a"),
+    "rose":  ("#4a302c", "#2f1e1c", "#6e4139", "#e3a397"),
+    "sage":  ("#2f4636", "#1d2d22", "#45684f", "#9fd1b0"),
+    "sky":   ("#2e3e55", "#1c2738", "#45618a", "#a9c6ee"),
+    "lilac": ("#3c3555", "#262139", "#5f5590", "#c4b8f0"),
+    "sand":  ("#4b3e26", "#2f2617", "#7d653a", "#ecd29c"),
 }
 
 
@@ -54,10 +55,10 @@ class Diagram(Scene):
 
     def card(self, x, y, w, h, pal="sky", r=18, depth=6):
         """Мягкая пастельная плашка: тень, кромка, лицо с градиентом, блик."""
-        light, main, edge = PAL[pal]
+        light, main, edge, rim = PAL[pal]
         c = self.P(x + w / 2, y + h / 2)
         g = VGroup()
-        for i, (grow, dy, op) in enumerate(((4, 10, .07), (9, 14, .05), (16, 18, .035))):
+        for i, (grow, dy, op) in enumerate(((4, 10, .22), (9, 14, .14), (16, 18, .09))):
             s = RoundedRectangle(width=(w + grow) * U, height=(h + grow) * U,
                                  corner_radius=(r + grow / 2) * U, stroke_width=0)
             s.set_fill(BLACK, op).move_to(c + DOWN * dy * U)
@@ -66,10 +67,11 @@ class Diagram(Scene):
         e.set_fill(edge, 1).move_to(c + DOWN * depth * U)
         f = RoundedRectangle(width=w * U, height=h * U, corner_radius=r * U, stroke_width=0)
         f.set_fill([light, main], 1).set_sheen_direction(DOWN)
+        f.set_stroke(rim, 1.6, .55)
         f.move_to(c)
         hl = RoundedRectangle(width=(w - 10) * U, height=h * .42 * U,
                               corner_radius=max(2, r - 4) * U, stroke_width=0)
-        hl.set_fill([WHITE, WHITE], [0.28, 0.0]).set_sheen_direction(DOWN)
+        hl.set_fill([WHITE, WHITE], [0.10, 0.0]).set_sheen_direction(DOWN)
         hl.move_to(self.P(x + w / 2, y + 5 + h * .21))
         g.add(e, f, hl)
         return g
@@ -150,35 +152,35 @@ class S4(Diagram):
     def construct(self):
         title = self.W("Путь легенды", 32, 300, 34, bold=True)
         bg = self.card(14, 72, 572, 430, "sky", r=24)
-        bg[-2].set_fill(["#f4f8f1", "#e3ecdc"], 1)
-        bg[-3].set_fill("#b9c7b0", 1)
+        bg[-2].set_fill(["#22302a", "#18221d"], 1).set_stroke("#6f8a78", 1.6, .55)
+        bg[-3].set_fill("#3b4c40", 1)
         # контур суши
         land_pts = [(40, 470), (36, 300), (62, 190), (120, 130), (230, 112), (360, 98),
                     (470, 110), (560, 140), (566, 300), (552, 470)]
         land = Polygon(*[self.P(*p) for p in land_pts], stroke_width=0)
         land = land.round_corners(28 * U)
-        land.set_fill(["#e4f1dc", "#cfe3c4"], 1).set_sheen_direction(DOWN)
-        sea = Ellipse(width=95 * U, height=48 * U, stroke_width=0).set_fill("#c8ddf2", 1).move_to(self.P(108, 458))
-        sea_lbl = self.T("Чёрное море", 14, 108, 490, color="#6d86a3")
-        river1 = self.bez([(160, 140), (200, 230), (150, 320), (175, 420)], "#9cc0e6", 3, False)[0]
-        river2 = self.bez([(430, 130), (460, 220), (440, 300), (470, 390)], "#9cc0e6", 3, False)[0]
+        land.set_fill(["#2d4232", "#233426"], 1).set_sheen_direction(DOWN)
+        sea = Ellipse(width=95 * U, height=48 * U, stroke_width=0).set_fill("#26425e", 1).move_to(self.P(108, 458))
+        sea_lbl = self.T("Чёрное море", 14, 108, 490, color="#8fb2d8")
+        river1 = self.bez([(160, 140), (200, 230), (150, 320), (175, 420)], "#5f8fbf", 3, False)[0]
+        river2 = self.bez([(430, 130), (460, 220), (440, 300), (470, 390)], "#5f8fbf", 3, False)[0]
         # горы «Урал»
         mts = VGroup()
         for i, (mx, my, s) in enumerate([(300, 170, 1.0), (285, 225, 1.15), (305, 285, 1.0), (290, 340, 1.1), (305, 395, .9)]):
             w, h = 52 * s, 44 * s
             tri = Polygon(self.P(mx - w / 2, my + h / 2), self.P(mx, my - h / 2), self.P(mx + w / 2, my + h / 2), stroke_width=0)
-            tri.set_fill(["#d9c39a", "#b39a6f"], 1).set_sheen_direction(DR)
+            tri.set_fill(["#9a8360", "#5e4c30"], 1).set_sheen_direction(DR)
             cap = Polygon(self.P(mx - w * .17, my - h * .5 + h * .34), self.P(mx, my - h / 2), self.P(mx + w * .17, my - h * .5 + h * .34), stroke_width=0)
-            cap.set_fill("#fbf7ee", 1)
+            cap.set_fill("#e6e0d2", 1)
             mts.add(VGroup(tri, cap))
-        ural = self.T("Урал", 20, 364, 292, color="#7c6440", bold=True)
+        ural = self.T("Урал", 20, 364, 292, color="#e0c999", bold=True)
 
         def pin(x, y, pal, label_rows, lx, ly, align="c"):
-            light, main, edge = PAL[pal]
+            light, main, edge, rim = PAL[pal]
             sh = Ellipse(width=22 * U, height=8 * U, stroke_width=0).set_fill(BLACK, .18).move_to(self.P(x, y + 2))
-            head = Circle(radius=11 * U, stroke_width=3, stroke_color=edge).set_fill([light, main], 1).set_sheen_direction(DOWN)
+            head = Circle(radius=11 * U, stroke_width=3, stroke_color=rim).set_fill([light, main], 1).set_sheen_direction(DOWN)
             head.move_to(self.P(x, y - 22))
-            stem = Polygon(self.P(x - 7, y - 16), self.P(x + 7, y - 16), self.P(x, y), stroke_width=0).set_fill(edge, 1)
+            stem = Polygon(self.P(x - 7, y - 16), self.P(x + 7, y - 16), self.P(x, y), stroke_width=0).set_fill(rim, 1)
             dot = Circle(radius=4 * U, stroke_width=0).set_fill(WHITE, 1).move_to(self.P(x, y - 22))
             lab = self.lines(label_rows, lx, ly, align=align)
             return VGroup(sh, stem, head, dot), lab
@@ -186,8 +188,8 @@ class S4(Diagram):
         spb, spb_l = pin(110, 205, "sky", [("Петербург", 21, DARK, True)], 110, 228)
         tag, tag_l = pin(200, 362, "rose", [("Таганрог", 21, DARK, True), ("1825, смерть царя", 17, DARK2, False)], 200, 394)
         tom, tom_l = pin(470, 240, "sage", [("Томск", 21, DARK, True), ("март 1837", 17, DARK2, False)], 470, 272)
-        route, rdash = self.bez([(203, 345), (270, 280), (360, 190), (466, 226)], "#c0563a", 4)
-        note = self.T("Схема без масштаба", 15, 572, 486, color="#6f7f72", align="r")
+        route, rdash = self.bez([(203, 345), (270, 280), (360, 190), (466, 226)], "#f2c86b", 4)
+        note = self.T("Схема без масштаба", 15, 572, 486, color="#9fb0a3", align="r")
 
         self.play(Write(title), FadeIn(bg, scale=.85), run_time=.5)
         self.play(FadeIn(land, shift=UP * .3), FadeIn(sea), run_time=.35)
@@ -277,10 +279,10 @@ class S6(Diagram):
         lp, rp = pan(None), pan(None)
 
         def cube(pal):
-            light, main, edge = PAL[pal]
+            light, main, edge, rim = PAL[pal]
             s = 34
             e = RoundedRectangle(width=s * U, height=s * U, corner_radius=6 * U, stroke_width=0).set_fill(edge, 1).shift(DOWN * 4 * U)
-            f = RoundedRectangle(width=s * U, height=s * U, corner_radius=6 * U, stroke_width=0).set_fill([light, main], 1).set_sheen_direction(DOWN)
+            f = RoundedRectangle(width=s * U, height=s * U, corner_radius=6 * U, stroke_width=0).set_fill([light, main], 1).set_sheen_direction(DOWN).set_stroke(rim, 1.6, .7)
             return VGroup(e, f)
 
         lc = [cube("sage") for _ in range(3)]

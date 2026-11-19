@@ -69,7 +69,7 @@ async function walk(page, label, { useButtons = false, frame = null, shots = fal
     const r = await ctx.evaluate(inspect);
     ok(r.n == String(i + 1), `${label}: ожидался слайд ${i + 1}, а показан ${r.n}`);
     r.problems.forEach(p => ok(false, `${label} слайд ${r.n}: ${p}`));
-    if (shots) { await sleep(1800); await page.screenshot({ path: path.join(SHOTS, `slide${i + 1}.png`) }); }
+    if (shots) { await sleep(1800); await page.screenshot({ path: path.join(SHOTS, `${typeof shots === 'string' ? shots : ''}slide${i + 1}.png`) }); }
     if (i < 7) {
       if (useButtons) await ctx.click('#btn-next');
       else await page.keyboard.press('ArrowRight');
@@ -107,7 +107,7 @@ async function walk(page, label, { useButtons = false, frame = null, shots = fal
     const page = await ctx.newPage();
     page.on('pageerror', e => errors.push('ipad: ' + e.message));
     await page.goto(URL);
-    await walk(page, 'iPad landscape', { useButtons: true });
+    await walk(page, 'iPad landscape', { useButtons: true, shots: 'ipad_' });
     await page.screenshot({ path: path.join(SHOTS, 'ipad_slide8.png') });
     await ctx.close();
   }

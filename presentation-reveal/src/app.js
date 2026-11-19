@@ -14,6 +14,8 @@
   var hero = document.getElementById('hero');
   var canvas = document.getElementById('apple3d');
   var fx = document.getElementById('fx');
+  var shadowEl = document.getElementById('appleShadow');
+  var field = document.getElementById('leafField');
   var slidesEl = document.querySelector('.reveal .slides');
   var sections = Array.prototype.slice.call(document.querySelectorAll('.reveal .slides > section'));
   var bar = document.querySelector('.controls-bar');
@@ -59,12 +61,13 @@
     var nb = Math.ceil(R * 4.4);
     if (nb !== BOX) { BOX = nb; if (gl) gl.resize(); }
     if (st && !moving) { var rp = restPos(cur); st.x = rp.x; st.y = rp.y; }
+    if (field && Math.abs((field._w || 0) - W) > 40) { field._w = W; buildField(); }
   }
 
   /* ---------- состояние яблока (координаты — в единицах кадра) ---------- */
   var st = null;
   var cam = 0, camReady = false;
-  var cur = 0, tl = null, firstDrop = true, moving = false, idleSw = 0, clock = 0;
+  var cur = 0, tl = null, firstDrop = true, moving = false, idleSw = 0, clock = 0, shOp = .3;
   var TAU = Math.PI * 2;
 
   function Ru() { return R / u; }
@@ -127,6 +130,82 @@
     }
   }
 
+  /* ---------- поле листьев в глубине (те же SVG-листья) ---------- */
+  var bgLeaves = [], fcv = null, fctx = null, fdpr = 1, fieldAcc = 0;
+  // лист из CSS-переменной --leaf (тот же SVG, что слетает с яблока)
+  var leafImg = null;
+  function leafSrc() {
+    var v = getComputedStyle(root).getPropertyValue('--leaf').trim();
+    var m = v.match(/^url\(["']?(.*?)["']?\)$/);
+    return m ? m[1] : null;
+  }
+  function buildField() {
+    if (!leafImg) {
+      var src = leafSrc();
+      if (!src) return;
+      leafImg = new Image();
+      leafImg.onload = buildField;
+      leafImg.src = src;
+      return;
+    }
+    if (!leafImg.complete || !leafImg.naturalWidth) return;
+    field.innerHTML = ''; bgLeaves = [];
+    // один холст на всё поле: один слой вместо десятков
+    fcv = document.createElement('canvas');
+    fdpr = Math.min(window.devicePixelRatio || 1, W < 1100 ? 1 : 1.5);
+    fcv.width = Math.round(W * fdpr); fcv.height = Math.round(H * fdpr);
+    fcv.style.cssText = 'position:absolute;left:0;top:0;width:' + W + 'px;height:' + H + 'px';
+    field.appendChild(fcv);
+    fctx = fcv.getContext('2d');
+    var small = W < 1100 || (window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    var n = small ? 12 : 34;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (var i = 0; i < n; i++) {
+      var d = .12 + Math.random() * .85;                     // глубина: 0 — далеко, 1 — близко
+      var w = 7 + d * d * 26, h = w * .53;
+      var blur = d < .32 ? 2.6 - d * 4 : d > .8 ? (d - .8) * 14 : 0;   // дальние и самые ближние не в фокусе
+      var pad = Math.ceil(blur * 2 + 2);
+      // лист рисуется один раз в маленький холст (размытие и затемнение «запекаются»),
+      // дальше двигается только transform — без перерисовки и CSS-фильтров
+      var cv = document.createElement('canvas');
+      cv.width = Math.ceil((w + pad * 2) * dpr); cv.height = Math.ceil((h + pad * 2) * dpr);
+      var cx = cv.getContext('2d');
+      cx.scale(dpr, dpr);
+      if (blur > .3 && 'filter' in cx) cx.filter = 'blur(' + blur.toFixed(1) + 'px)';
+      cx.drawImage(leafImg, pad, pad, w, h);
+      cx.filter = 'none';
+      cx.globalCompositeOperation = 'source-atop';
+      cx.fillStyle = 'rgba(6,12,8,' + (.5 - d * .2).toFixed(2) + ')';
+      cx.fillRect(0, 0, w + pad * 2, h + pad * 2);
+      bgLeaves.push({ img: cv, cw: w + pad * 2, ch: h + pad * 2, a: .25 + d * .4, d: d, x: Math.random() * W, y: Math.random() * (H + 80), v: 4 + d * 12,
+        amp: 10 + d * 26, w: .15 + Math.random() * .35, ph: Math.random() * 6.28, r: Math.random() * 360, vr: (Math.random() - .5) * 18 });
+    }
+  }
+  var fieldSkip = 0;
+  function tickField(t, dt) {
+    if (!fctx) return;
+    // на небольших экранах поле перерисовывается через кадр: листья плывут медленно, разницы не видно
+    fieldAcc += dt;
+    if (W < 1100 && (fieldSkip++ & 1)) return;
+    dt = fieldAcc; fieldAcc = 0;
+    var span = H + 80;
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    fctx.clearRect(0, 0, fcv.width, fcv.height);
+    for (var i = 0; i < bgLeaves.length; i++) {
+      var L = bgLeaves[i];
+      if (!reduce) { L.y += L.v * dt; L.r += L.vr * dt; }
+      var y = L.y - cam * (.25 + .55 * L.d);                   // параллакс: ближние едут быстрее камеры
+      y = ((y % span) + span) % span - 40;
+      var x = L.x + Math.sin(t * L.w + L.ph) * L.amp;
+      var ang = (L.r + Math.sin(t * .4 + L.ph) * 25) * Math.PI / 180;
+      var c = Math.cos(ang) * fdpr, sn = Math.sin(ang) * fdpr;
+      fctx.setTransform(c, sn, -sn, c, x * fdpr, y * fdpr);
+      fctx.globalAlpha = L.a;
+      fctx.drawImage(L.img, -L.cw / 2, -L.ch / 2, L.cw, L.ch);
+    }
+    fctx.globalAlpha = 1;
+  }
+
   /* ---------- вылет текста и схем из яблока ---------- */
   var diagramURL = {};
   var blobs = {};
@@ -149,21 +228,37 @@
     if (old) setTimeout(function () { URL.revokeObjectURL(old); }, 1000);
   }
   function items(i) { return sections[i] ? Array.prototype.slice.call(sections[i].querySelectorAll('.a, .footer')) : []; }
+  function isHead(e) { return e.tagName === 'H1' || e.tagName === 'H2'; }
   function hideSlide(i) {
     var els = items(i);
     gsap.killTweensOf(els);
-    gsap.set(els, { opacity: 0, x: 0, y: 0, scale: 1 });
+    gsap.set(els, { opacity: 0, x: 0, y: 0, scale: 1, filter: 'blur(0px)' });
+  }
+  // уход слайда: заголовок отступает вглубь (размытие и уменьшение), остальное гаснет
+  function leaveSlide(i) {
+    var els = items(i);
+    gsap.killTweensOf(els);
+    els.forEach(function (e) {
+      if (isHead(e)) gsap.to(e, { opacity: 0, scale: .9, filter: 'blur(7px)', duration: .4, ease: 'power2.in' });
+      else gsap.to(e, { opacity: 0, duration: .2 });
+    });
   }
   function flyIn(i) {
     var els = items(i);
     gsap.killTweensOf(els);
-    if (reduce) { gsap.set(els, { opacity: 1, x: 0, y: 0, scale: 1 }); st.op = .4; return; }
-    gsap.set(els, { x: 0, y: 0, scale: 1 });
+    if (reduce) { gsap.set(els, { opacity: 1, x: 0, y: 0, scale: 1, filter: 'blur(0px)' }); st.op = .4; return; }
+    gsap.set(els, { x: 0, y: 0, scale: 1, filter: 'blur(0px)' });
     var p = appleScreen();
     // яблоко «раскрывается»: вспышка, затем уходит в тень под текстом
     gsap.timeline().to(st, { glow: 1, duration: .12, ease: 'power2.out' }).to(st, { glow: 0, duration: .5 });
     gsap.to(st, { op: .5, duration: .7, delay: .55, ease: 'power1.inOut' });
     els.forEach(function (e, k) {
+      if (isHead(e)) {
+        // заголовок выплывает из глубины: из размытого и уменьшенного в чёткий
+        gsap.fromTo(e, { opacity: 0, scale: .9, filter: 'blur(8px)' },
+          { opacity: 1, scale: 1, filter: 'blur(0px)', duration: .9, delay: .05, ease: 'power2.out' });
+        return;
+      }
       var r = e.getBoundingClientRect();
       var dx = (p.x - (r.left + r.width / 2)) / VS, dy = (p.y - (r.top + r.height / 2)) / VS;
       gsap.fromTo(e, { x: dx, y: dy, scale: .04, opacity: 0 },
@@ -183,7 +278,7 @@
     var interrupted = !!tl || moving;
     var from = cur;
     if (tl) { tl.kill(); tl = null; }
-    if (cur !== idx) { var old = items(cur); gsap.killTweensOf(old); gsap.to(old, { opacity: 0, duration: .2 }); }
+    if (cur !== idx) leaveSlide(cur);
     cur = idx;
     hideSlide(idx);
     updateUI();
@@ -301,8 +396,11 @@
     // свет как на фото: яркое солнце сбоку-сверху, голубое небо, тёплый отсвет травы
     scene.add(new T3.HemisphereLight(0xcfe3ff, 0x6b7a3a, 1.0));
     var sun = new T3.DirectionalLight(0xfff0d8, 2.6); sun.position.set(-.9, 1.0, 1.1); scene.add(sun);
-    var rim = new T3.DirectionalLight(0xd8ecff, .8); rim.position.set(1, .5, -1.2); scene.add(rim);
+    var rim = new T3.DirectionalLight(0xd8ecff, 1.4); rim.position.set(1.1, .3, -1); scene.add(rim);
     var fill = new T3.DirectionalLight(0xffffff, .35); fill.position.set(.6, -.4, 1); scene.add(fill);
+    // блик по краю яблока: два контровых света сзади
+    var edgeL = new T3.DirectionalLight(0xfff1dc, 2.4); edgeL.position.set(-1.1, .7, -.9); scene.add(edgeL);
+    
 
     // форма яблока: чуть шире сверху, впадины у черенка и снизу, лёгкая асимметрия
     var pts = [];
@@ -340,6 +438,16 @@
     var cap = new T3.Mesh(new T3.SphereGeometry(.036, 8, 6), stem.material);
     cap.position.set(.13, 1.16, .02);
 
+    // мягкая тень под яблоком — в том же холсте, без отдельного слоя
+    var sc = document.createElement('canvas'); sc.width = sc.height = 64;
+    var g2 = sc.getContext('2d'), gr = g2.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(0,0,0,.7)'); gr.addColorStop(.5, 'rgba(0,0,0,.32)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g2.fillStyle = gr; g2.fillRect(0, 0, 64, 64);
+    var shMat = new T3.MeshBasicMaterial({ map: new T3.CanvasTexture(sc), transparent: true, depthWrite: false, toneMapped: false });
+    var shadow = new T3.Mesh(new T3.PlaneGeometry(1, 1), shMat);
+    shadow.position.z = -R * 3; shadow.renderOrder = -1;
+    scene.add(shadow);
+
     var spin = new T3.Group(); spin.add(body, stem, cap);
     var tilt = new T3.Group(); tilt.add(spin);
     var squash = new T3.Group(); squash.add(tilt);
@@ -356,6 +464,9 @@
       tilt.rotation.set(st.rx, 0, -st.tilt + disp().a);
       spin.rotation.y = st.ry;
       mat.emissive.setRGB(.35 * st.glow, .22 * st.glow, .08 * st.glow);
+      shadow.scale.set(R * 2.3 * st.sx, R * .62, 1);
+      shadow.position.set(0, -R * .92 - disp().y * 0, -R * 3);
+      shMat.opacity = shOp;
       renderer.render(scene, camera);
     }
     return { resize: resize, draw: draw };
@@ -386,6 +497,13 @@
       var hs = R * 2.25;
       hero.style.transform = 'translate3d(' + (p.x - hs / 2).toFixed(2) + 'px,' + (p.y - hs / 2 - R * (1 - st.sy) * .9).toFixed(2) + 'px,0) rotate(' + (st.rx + st.tilt - disp().a).toFixed(3) + 'rad) scale(' + st.sx.toFixed(3) + ',' + st.sy.toFixed(3) + ')';
     }
+    // мягкая тень под яблоком: плотнее, когда лежит, почти исчезает в полёте
+    var sw2 = R * 2.3 * st.sx, sh2 = R * .62;
+    var stopM = STOPS[cur].m, base = stopM === 'ground' ? .75 : stopM === 'rest' ? .55 : .3;
+    shOp += ((moving ? .12 : base) - shOp) * Math.min(1, dt * 6);
+    if (!gl) shadowEl.style.transform = 'translate3d(' + (p.x - 50).toFixed(1) + 'px,' + (p.y + R * .92 - 50).toFixed(1) + 'px,0) scale(' + (sw2 / 100).toFixed(3) + ',' + (sh2 / 100).toFixed(3) + ')';
+    if (!gl) shadowEl.style.opacity = (shOp * Math.max(st.op, .6)).toFixed(3);
+    tickField(clock, dt);
     if (leaves.length) tickLeaves(dt, clock);
   }
 

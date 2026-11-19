@@ -1,21 +1,31 @@
+:root { --leaf: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 38 20'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23708f4a'/><stop offset='.5' stop-color='%234d6e32'/><stop offset='1' stop-color='%239aab84'/></linearGradient></defs><path d='M1 10 C6 3 14 1 22 2 L24 1.5 L26 3 L28 3 L30 5 L32 5.5 L33 7.5 L35 8.5 L37 10 L35 11.5 L33 12.5 L32 14.5 L30 15 L28 17 L26 17 L24 18.5 L22 18 C14 19 6 17 1 10Z' fill='url(%23g)'/><path d='M1 10 L36 10' stroke='%23c9d6a8' stroke-width='.8' opacity='.7'/><path d='M9 10 L13 5 M15 10 L19 4.5 M21 10 L25 5 M27 10 L30 6.5 M9 10 L13 15 M15 10 L19 15.5 M21 10 L25 15 M27 10 L30 13.5' stroke='%23b8c79a' stroke-width='.5' opacity='.6'/></svg>"); }
 :root { color-scheme: dark; }
-html, body { margin: 0; height: 100%; background: #0f1a0e; overflow: hidden; }
+html, body { margin: 0; height: 100%; background: #060a08; overflow: hidden; }
 body { font-family: Calibri, Carlito, "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #fff;
   -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
 
 /* ---- сцена ---- */
-#scene { position: fixed; inset: 0; overflow: hidden; z-index: 0; background: #0f1a0e; }
+#scene { position: fixed; inset: 0; overflow: hidden; z-index: 0; background: #060a08; }
+/* поле мелких листьев в глубине */
+#leafField { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+#leafField .bgleaf { position: absolute; left: 0; top: 0; will-change: transform; }
 #tree { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; will-change: transform;
   user-select: none; -webkit-user-select: none; pointer-events: none; }
 #scrim { position: fixed; inset: 0; z-index: 1; pointer-events: none;
-  background: radial-gradient(ellipse 72% 64% at 50% 46%, rgba(6,12,6,.64) 0%, rgba(6,12,6,.52) 55%, rgba(6,12,6,.2) 100%); }
+  /* один слой: сильное затемнение фото (дерево — фон) и мягкое пятно под текстом */
+  background: radial-gradient(ellipse 72% 64% at 50% 46%, rgba(3,6,4,.4) 0%, rgba(3,6,4,.25) 55%, rgba(3,6,4,0) 100%),
+    radial-gradient(ellipse 90% 80% at 50% 45%, rgba(4,8,6,.6) 0%, rgba(4,8,6,.72) 60%, rgba(3,5,4,.88) 100%); }
+#appleShadow { position: fixed; left: 0; top: 0; width: 100px; height: 100px; z-index: 1; pointer-events: none; will-change: transform, opacity;
+  border-radius: 50%; background: radial-gradient(ellipse at center, rgba(0,0,0,.62) 0%, rgba(0,0,0,.3) 45%, rgba(0,0,0,0) 72%); }
 #apple3d, #hero { position: fixed; left: 0; top: 0; z-index: 1; pointer-events: none; will-change: transform; }
 #hero { display: none; max-width: none; filter: saturate(1.25) drop-shadow(0 6px 8px rgba(0,0,0,.45)); }
 .no-gl #hero { display: block; }
+#appleShadow { display: none; }
+.no-gl #appleShadow { display: block; }
 .no-gl #apple3d { display: none; }
 #fx { position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
 #fx .leaf { position: absolute; left: 0; top: 0; width: 20px; height: 11px; margin: -5px 0 0 -10px;
-  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 38 20'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23708f4a'/><stop offset='.5' stop-color='%234d6e32'/><stop offset='1' stop-color='%239aab84'/></linearGradient></defs><path d='M1 10 C6 3 14 1 22 2 L24 1.5 L26 3 L28 3 L30 5 L32 5.5 L33 7.5 L35 8.5 L37 10 L35 11.5 L33 12.5 L32 14.5 L30 15 L28 17 L26 17 L24 18.5 L22 18 C14 19 6 17 1 10Z' fill='url(%23g)'/><path d='M1 10 L36 10' stroke='%23c9d6a8' stroke-width='.8' opacity='.7'/><path d='M9 10 L13 5 M15 10 L19 4.5 M21 10 L25 5 M27 10 L30 6.5 M9 10 L13 15 M15 10 L19 15.5 M21 10 L25 15 M27 10 L30 13.5' stroke='%23b8c79a' stroke-width='.5' opacity='.6'/></svg>") center / 100% 100% no-repeat; will-change: transform; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+  background: var(--leaf) center / 100% 100% no-repeat; will-change: transform; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
 #fx .dust { position: absolute; left: 0; top: 0; width: 26px; height: 12px; border-radius: 50%;
   background: radial-gradient(ellipse at center, rgba(214,200,160,.75), rgba(214,200,160,0) 70%); will-change: transform, opacity; }
 
