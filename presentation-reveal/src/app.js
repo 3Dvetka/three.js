@@ -20,8 +20,19 @@
   gsap.globalTimeline.timeScale(SPEED);
 
   /* ---------- разметка фона (кадр 750 x 1001) ---------- */
-  var FW = 750, FH = 1001, PX = 715, P_TOP = 150, P_BOT = 540, P_GROUND = 905;
-  function stopY(i) { return P_TOP + (P_BOT - P_TOP) * Math.min(i, 6) / 6; }
+  var FW = 750, FH = 1001, PX = 708;
+  /* Реальные ветки на фото (точки в единицах кадра), сверху вниз.
+     hang — яблоко висит на черенке под веткой, rest — лежит на ветке, ground — трава. s — наклон ветки. */
+  var STOPS = [
+    { x: 726, y: 160, m: 'hang', s: .55 },          // 1 светлая ветка у верхушки
+    { x: 728, y: 212, m: 'rest', s: -.15 }, // 2 тонкая ветка
+    { x: 720, y: 250, m: 'hang', s: .5 },          // 3 ветка с гроздью яблок
+    { x: 695, y: 298, m: 'hang', s: .45 },          // 4 тёмная наклонная ветка
+    { x: 698, y: 398, m: 'hang', s: .12 },          // 5 ветка между двумя яблоками
+    { x: 680, y: 495, m: 'rest', s: -.03 }, // 6 почти горизонтальная ветка
+    { x: 728, y: 532, m: 'rest', s: .26 },  // 7 нижняя ветка у ствола
+    { x: 712, y: 905, m: 'ground' }         // 8 трава
+  ];
 
   /* ---------- раскладка ---------- */
   var W, H, VS, slideL, slideT, slideW, slideH, mx, u, offX, SH, R = 28, BOX = 0, fieldW;
@@ -42,6 +53,8 @@
     if (R * 2.3 > fieldW) R = Math.max(12, fieldW / 2.3);
     u = Math.max(W / FW, 1.3 * H / FH) * 1.04;
     offX = Math.min(0, Math.max(W - FW * u, mx - PX * u));
+    if (typeof st !== 'undefined' && !moving && camReady) { var rp = restPos(cur); st.x = rp.x; st.y = rp.y; }
+    if (twigsEl) { if (twigs.length && Math.abs(twigs[0].Lp - twigLen() * u) < .5) placeTwigs(); else buildTwigs(); }
     SH = FH * u;
     tree.style.width = (FW * u) + 'px';
     tree.style.height = (FH * u) + 'px';
@@ -51,14 +64,117 @@
   }
 
   /* ---------- состояние яблока (y — в единицах кадра, x — смещение в единицах) ---------- */
-  var st = { x: 0, y: stopY(0), tilt: 0, rx: 0, ry: 0, sx: 1, sy: 1 };
+  var st = { x: STOPS[0].x, y: STOPS[0].y, tilt: 0, rx: 0, ry: 0, sx: 1, sy: 1, sw: 0, att: 0 };
   var cam = 0, camReady = false;
-  var cur = 0, tl = null, firstDrop = true, moving = false;
+  var cur = 0, tl = null, firstDrop = true, moving = false, idleSw = 0, clock = 0;
 
-  function groundY() { return P_GROUND - R / u; }
-  function targetY(i) { return i >= 7 ? groundY() : stopY(i); }
-  function targetX(i) { return i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.min(6, fieldW * 0.12 / u); }
-  function appleScreen() { return { x: mx + st.x * u, y: st.y * u - cam }; }
+  function Ru() { return R / u; }
+  function stemL() { return Ru() * 1.15; }           // от точки подвеса до центра яблока
+  function restPos(i) {
+    var s = STOPS[i];
+    if (s.m === 'hang') return { x: s.x, y: s.y + stemL() };
+    if (s.m === 'rest') return { x: s.x, y: s.y - Ru() * .9 };
+    return { x: s.x, y: s.y - Ru() };
+  }
+  // положение с учётом раскачивания на черенке (sw — угол маятника)
+  function disp() {
+    var a = st.sw + idleSw, L = stemL();
+    var by = (st.att >= 0 && twigs[st.att]) ? Math.sin(twigs[st.att].bend) * twigLen() * .75 : 0;
+    return { x: st.x + L * Math.sin(a), y: st.y - L * (1 - Math.cos(a)) + by, a: a };
+  }
+  function appleScreen() {
+    var d = disp();
+    var x = offX + d.x * u;
+    x = clamp(x, slideL + slideW + R + 6, W - R - 4);
+    return { x: x, y: d.y * u - cam };
+  }
+
+  /* ---------- ветки: объёмные веточки поверх реальных веток фото, пружинят под яблоком ---------- */
+  var twigsEl = document.getElementById('twigs');
+  var twigs = [];
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function twigLen() { return Ru() * 4.2; }
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function buildTwigs() {
+    twigsEl.innerHTML = '';
+    twigs.forEach(function (t) { t.dead = true; });
+    var old = twigs; twigs = [];
+    STOPS.forEach(function (stop, i) {
+      if (stop.m === 'ground') { twigs.push(null); return; }
+      var Lp = twigLen() * u, h = R * 3.2, c = h / 2, w0 = R * .36, w1 = R * .09;
+      var svg = el('svg', { width: Lp.toFixed(1), height: h.toFixed(1), viewBox: '0 0 ' + Lp.toFixed(1) + ' ' + h.toFixed(1) });
+      svg.setAttribute('class', 'twig');
+      var defs = el('defs', {}, svg), id = 'bark' + i;
+      var g = el('linearGradient', { id: id, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+      el('stop', { offset: '0', 'stop-color': '#b3a58e' }, g);
+      el('stop', { offset: '.45', 'stop-color': '#76644f' }, g);
+      el('stop', { offset: '1', 'stop-color': '#352a21' }, g);
+      var lg = el('linearGradient', { id: 'lf' + i, x1: 0, y1: 0, x2: 1, y2: 1 }, defs);
+      el('stop', { offset: '0', 'stop-color': '#86bd5e' }, lg);
+      el('stop', { offset: '1', 'stop-color': '#2f6127' }, lg);
+      // боковой сучок
+      var sx0 = Lp * .38, sy0 = c - w0 * .25;
+      el('path', { d: 'M' + sx0 + ' ' + sy0 + ' Q' + (sx0 + Lp * .12) + ' ' + (c - R * .7) + ' ' + (sx0 + Lp * .22) + ' ' + (c - R * 1.15),
+        stroke: 'url(#' + id + ')', 'stroke-width': (R * .11).toFixed(1), fill: 'none', 'stroke-linecap': 'round' }, svg);
+      // ствол ветки: сужается от основания (x=0) к кончику (x=Lp)
+      var bow = -R * .1;
+      var d = 'M0 ' + (c - w0 / 2) +
+        ' Q' + (Lp / 2) + ' ' + (c + bow - (w0 + w1) / 4) + ' ' + Lp + ' ' + (c - w1 / 2) +
+        ' A' + (w1 / 2) + ' ' + (w1 / 2) + ' 0 0 1 ' + Lp + ' ' + (c + w1 / 2) +
+        ' Q' + (Lp / 2) + ' ' + (c + bow + (w0 + w1) / 4) + ' 0 ' + (c + w0 / 2) + 'Z';
+      el('path', { d: d, fill: 'url(#' + id + ')' }, svg);
+      // лишайник на коре
+      [[.12, -.05, .16], [.3, .06, .1], [.52, -.03, .08]].forEach(function (q) {
+        el('ellipse', { cx: Lp * q[0], cy: c + R * q[1], rx: R * q[2], ry: R * q[2] * .45, fill: 'rgba(196,204,186,.55)' }, svg);
+      });
+      // листья
+      [[.22, -1, -38], [.5, 1, 32], [.62, -1, -50], [.97, -1, -12]].forEach(function (q) {
+        var lx = Lp * q[0], ly = c + q[1] * R * .05, len = R * .95, wd = R * .34;
+        var gl2 = el('g', { transform: 'translate(' + lx + ' ' + ly + ') rotate(' + (q[1] < 0 ? 180 + q[2] : q[2]) + ')' }, svg);
+        el('path', { d: 'M0 0 Q' + len / 2 + ' ' + (-wd) + ' ' + len + ' 0 Q' + len / 2 + ' ' + wd + ' 0 0Z', fill: 'url(#lf' + i + ')' }, gl2);
+        el('path', { d: 'M0 0 L' + len * .92 + ' 0', stroke: 'rgba(220,240,190,.45)', 'stroke-width': '1', fill: 'none' }, gl2);
+      });
+      twigsEl.appendChild(svg);
+      var prev = old[i];
+      twigs.push({ el: svg, bend: prev ? prev.bend : 0, Lp: Lp, h: h, i: i, last: null });
+    });
+    placeTwigs();
+  }
+  function placeTwigs() {
+    twigs.forEach(function (t) {
+      if (!t) return;
+      var stop = STOPS[t.i], s = stop.s || 0, n = Math.sqrt(1 + s * s);
+      // точка крепления — там, где яблоко висит/лежит (с тем же ограничением по полю, что и яблоко)
+      var ax = clamp(offX + stop.x * u, slideL + slideW + R + 6, W - R - 4), ay = stop.y * u;
+      var bx = ax + .75 * t.Lp / n, by = ay + .75 * t.Lp * s / n;            // основание справа, к стволу
+      t.ang = Math.atan2(-s, -1) * 180 / Math.PI;                            // от основания к кончику
+      t.bx = bx; t.by = by; t.last = null;
+    });
+  }
+  function drawTwigs() {
+    for (var k = 0; k < twigs.length; k++) {
+      var t = twigs[k];
+      if (!t) continue;
+      var key = t.bend.toFixed(4);
+      if (key === t.last) continue;
+      t.last = key;
+      t.el.style.transform = 'translate3d(' + t.bx.toFixed(1) + 'px,' + (t.by - t.h / 2).toFixed(1) + 'px,0) rotate(' + (t.ang - t.bend * 180 / Math.PI).toFixed(2) + 'deg)';
+    }
+  }
+  // ветка пружинит: прогиб amp (рад) и затухающие колебания
+  function springTwig(i, amp, t, pos) {
+    var tw = twigs[i];
+    if (!tw) return;
+    var tt = gsap.timeline();
+    tt.to(tw, { bend: amp, duration: .07, ease: 'power2.out' })
+      .to(tw, { bend: 0, duration: .9, ease: 'elastic.out(1.1, .32)' });
+    if (t) t.add(tt, pos); else tt.play();
+  }
 
   /* ---------- листья и пыль ---------- */
   var leaves = [];
@@ -150,65 +266,119 @@
   function goTo(idx) {
     if (idx === cur && tl) return;
     var interrupted = !!tl || moving;
+    var from = cur;
     if (tl) { tl.kill(); tl = null; }
     if (cur !== idx) { var old = items(cur); gsap.killTweensOf(old); gsap.to(old, { opacity: 0, duration: .2 }); }
     cur = idx;
     hideSlide(idx);
     updateUI();
-    var ty = targetY(idx);
+    var tp = restPos(idx);
     if (reduce) {
-      st.y = ty; st.x = targetX(idx); st.sx = st.sy = 1; st.tilt = 0;
+      st.x = tp.x; st.y = tp.y; st.sx = st.sy = 1; st.tilt = 0; st.sw = 0; st.rx = 0; st.att = STOPS[idx].m === 'ground' ? -1 : idx;
       flyIn(idx); return;
     }
-    if (ty > st.y + 0.5) fall(idx, ty, interrupted);
-    else if (ty < st.y - 0.5) rise(idx, ty);
-    else { flyIn(idx); }
+    if (tp.y > st.y + 0.5) fall(idx, from, interrupted);
+    else if (tp.y < st.y - 0.5) rise(idx);
+    else flyIn(idx);
   }
 
-  function fall(idx, ty, interrupted) {
-    moving = true;
-    var t = gsap.timeline({ onComplete: function () { tl = null; moving = false; } });
-    tl = t;
-    var y0 = st.y;
-    if (!interrupted) {
+  function nearTurn(v, dir) {
+    return dir > 0 ? Math.ceil(v / TAU - 1e-6) * TAU : dir < 0 ? Math.floor(v / TAU + 1e-6) * TAU : Math.round(v / TAU) * TAU;
+  }
+
+  // отрыв от текущей ветки: сорваться с черенка или скатиться
+  function leave(t, from, idx) {
+    var s = STOPS[from], nx = STOPS[idx].x;
+    if (s.m === 'hang') {
       var amps = firstDrop ? [.05, -.09, .13, -.17, .08] : [.06, -.1, .07];
-      amps.forEach(function (a) { t.to(st, { tilt: a, duration: .1, ease: 'sine.inOut' }); });
-      var jump = R * 0.25 / u;
-      y0 = st.y - jump;
-      t.to(st, { y: y0, tilt: 0, sx: 1.06, sy: 0.94, duration: .09, ease: 'power1.out',
-        onStart: function () { spawnLeaves(firstDrop ? 3 : 2); } });
-      firstDrop = false;
+      amps.forEach(function (a) { t.to(st, { sw: a * 1.6, duration: .1, ease: 'sine.inOut' }); });
+      // черенок рвётся: яблоко дёргается вверх, слетают листья
+      t.to(st, { sw: 0, y: '-=' + (Ru() * .22), sx: 1.06, sy: .94, duration: .09, ease: 'power1.out',
+        onStart: function () { spawnLeaves(firstDrop ? 3 : 2); st.att = -1; springTwig(from, -.07); } });
     } else {
-      t.to(st, { tilt: 0, duration: .08 }, 0);
+      // лежит на ветке: покачивается и скатывается к краю
+      [.06, -.08, .1].forEach(function (a) { t.to(st, { tilt: a, duration: .1, ease: 'sine.inOut' }); });
+      var dir = nx >= st.x ? 1 : -1, dist = Ru() * 1.2, slope = s.s || 0;
+      t.to(st, { x: '+=' + dir * dist, y: '+=' + (slope * dir * dist - Ru() * .08), tilt: dir * dist / Ru(),
+        duration: .32, ease: 'power1.in', onStart: function () { spawnLeaves(1); } });
+      t.call(function () { st.att = -1; springTwig(from, -.05); });
     }
-    var T = fallTime(ty - y0);
-    var rxT = Math.ceil(st.rx / TAU + 1 - 1e-6) * TAU;
-    t.addLabel('fall');
-    t.to(st, { y: ty, duration: T, ease: 'power2.in' }, 'fall');
-    t.to(st, { x: targetX(idx), duration: T, ease: 'sine.inOut' }, 'fall');
-    t.to(st, { rx: rxT, ry: '+=' + (1.5 * Math.PI), duration: T, ease: 'none' }, 'fall');
-    t.to(st, { sx: .91, sy: 1.15, duration: Math.max(.05, T * .6), ease: 'power1.in' }, 'fall');
-    // удар
-    t.to(st, { sx: 1.22, sy: .74, duration: .06, ease: 'power2.out',
-      onStart: function () { if (idx >= 7) dust(); else spawnLeaves(1); } });
-    // отскоки
-    var h1 = R * 1.1 / u, t1 = fallTime(h1), h2 = R * 0.35 / u, t2 = fallTime(h2);
-    t.to(st, { y: ty - h1, sx: .96, sy: 1.05, duration: t1, ease: 'power2.out' });
-    t.to(st, { y: ty, sx: 1, sy: 1, duration: t1, ease: 'power2.in' });
-    t.to(st, { sx: 1.1, sy: .9, duration: .05, ease: 'power2.out' });
-    t.to(st, { y: ty - h2, sx: 1, sy: 1, duration: t2, ease: 'power2.out' });
-    t.to(st, { y: ty, duration: t2, ease: 'power2.in' });
-    t.call(function () { flyIn(idx); });
-    t.to(st, { sx: 1.05, sy: .95, duration: .05 }).to(st, { sx: 1, sy: 1, duration: .1 });
+    firstDrop = false;
   }
 
-  function rise(idx, ty) {
+  function fall(idx, from, interrupted) {
     moving = true;
     var t = gsap.timeline({ onComplete: function () { tl = null; moving = false; } });
     tl = t;
-    var rxT = Math.round(st.rx / TAU) * TAU;
-    t.to(st, { y: ty, x: targetX(idx), sx: 1, sy: 1, tilt: 0, rx: rxT, duration: 1, ease: 'power2.inOut' });
+    if (!interrupted) leave(t, from, idx);
+    else { st.att = -1; t.to(st, { sw: 0, duration: .08 }, 0); }
+    t.call(function () { flight(t, idx); });
+  }
+
+  // полёт до следующей ветки и «приём» веткой; строится в момент отрыва, когда известна высота
+  function flight(t0, idx) {
+    var t = gsap.timeline({ onComplete: function () { tl = null; moving = false; } });
+    tl = t;
+    var stop = STOPS[idx], tp = restPos(idx);
+    var dx = tp.x - st.x, dir = dx > .5 ? 1 : dx < -.5 ? -1 : 0;
+    var yEnd = tp.y;                                              // проседание даёт сама ветка
+    var T = fallTime(yEnd - st.y);
+    t.addLabel('fall');
+    t.to(st, { y: yEnd, duration: T, ease: 'power2.in' }, 'fall');
+    t.to(st, { x: tp.x, duration: T, ease: 'none' }, 'fall');
+    t.to(st, { rx: nearTurn(st.rx + TAU * .6, 1), ry: '+=' + (1.5 * Math.PI), tilt: nearTurn(st.tilt, dir || 1),
+      duration: T, ease: 'none' }, 'fall');
+    t.to(st, { sx: .91, sy: 1.15, duration: Math.max(.05, T * .6), ease: 'power1.in' }, 'fall');
+
+    if (stop.m === 'hang') {
+      // зацепился черенком: рывок, пружинит вверх и раскачивается
+      var kick = (dir || (idx % 2 ? 1 : -1)) * .42;
+      t.to(st, { sx: .94, sy: 1.12, sw: kick, duration: .07, ease: 'power2.out',
+        onStart: function () { spawnLeaves(2); st.att = idx; springTwig(idx, .2); } });
+      t.to(st, { sx: 1, sy: 1, duration: .32, ease: 'back.out(3)' }, '>');
+      t.call(function () { flyIn(idx); }, null, '<');
+      [-.26, .15, -.08, .03, 0].forEach(function (a, k) {
+        t.to(st, { sw: a, duration: .26 - k * .02, ease: 'sine.inOut' }, k === 0 ? '<' : '>');
+      });
+    } else {
+      var ground = stop.m === 'ground';
+      t.to(st, { sx: 1.22, sy: .74, duration: .06, ease: 'power2.out',
+        onStart: function () { if (ground) dust(); else { spawnLeaves(2); st.att = idx; springTwig(idx, .13); } } });
+      var h1 = (ground ? 1.1 : .22) * Ru(), t1 = fallTime(h1);
+      t.to(st, { y: tp.y - h1, sx: .96, sy: 1.05, duration: t1, ease: 'power2.out' });
+      t.to(st, { y: tp.y, sx: 1, sy: 1, duration: t1, ease: 'power2.in' });
+      t.to(st, { sx: 1.1, sy: .9, duration: .05, ease: 'power2.out' });
+      if (ground) {
+        var h2 = Ru() * .35, t2 = fallTime(h2);
+        t.to(st, { y: tp.y - h2, sx: 1, sy: 1, duration: t2, ease: 'power2.out' });
+        t.to(st, { y: tp.y, duration: t2, ease: 'power2.in' });
+        t.call(function () { flyIn(idx); });
+        t.to(st, { sx: 1.05, sy: .95, duration: .05 }).to(st, { sx: 1, sy: 1, duration: .1 });
+      } else {
+        // улёгся на ветку: перекатывается туда-сюда и замирает
+        t.call(function () { flyIn(idx); });
+        var base = st.tilt;
+        t.to(st, { sx: 1, sy: 1, duration: .08 });
+        [.16, -.1, .05, 0].forEach(function (a, k) {
+          t.to(st, { x: tp.x + a * Ru() * .6, tilt: '+=' + 0, duration: .16, ease: 'sine.inOut',
+            onUpdate: function () { st.tilt = Math.round(st.tilt / TAU) * TAU + (st.x - tp.x) / Ru(); } }, k === 0 ? '<' : '>');
+        });
+        t.to(st, { x: tp.x, duration: .05 });
+      }
+    }
+    t0.kill();
+  }
+
+  function rise(idx) {
+    moving = true;
+    var t = gsap.timeline({ onComplete: function () { tl = null; moving = false; } });
+    tl = t;
+    var tp = restPos(idx);
+    t.to(st, { y: tp.y, x: tp.x, sx: 1, sy: 1, sw: 0, tilt: nearTurn(st.tilt, 0), rx: nearTurn(st.rx, 0),
+      duration: 1, ease: 'power2.inOut' });
     t.call(function () { flyIn(idx); }, null, .75);
+    st.att = -1;
+    t.call(function () { st.att = STOPS[idx].m === 'ground' ? -1 : idx; springTwig(idx, .06); });
   }
 
   /* ---------- 3D-яблоко (three.js) ---------- */
@@ -299,7 +469,7 @@
     function draw() {
       squash.scale.set(R * st.sx, R * st.sy, R);
       squash.position.y = -R * (1 - st.sy) * 0.9; // сплющивание от точки опоры
-      tilt.rotation.set(st.rx, 0, -st.tilt);
+      tilt.rotation.set(st.rx, 0, -st.tilt + disp().a);
       spin.rotation.y = st.ry;
       shadow.scale.set(R * 2.1 * st.sx, R * .55, 1);
       shadow.position.set(0, -R * 1.02, -R * 2);
@@ -312,6 +482,8 @@
   var lastKey = '';
   function frame(time, deltaMs) {
     var dt = Math.min(deltaMs / 1000, .1) * SPEED;
+    clock += dt;
+    idleSw = (!reduce && !moving && STOPS[cur].m === 'hang') ? idleSw + (0.03 * Math.sin(clock * 1.7) - idleSw) * Math.min(1, dt * 3) : idleSw * Math.max(0, 1 - dt * 8);
     var target = clamp(st.y * u - H / 2, 0, Math.max(0, SH - H));
     if (!camReady) { cam = target; camReady = true; }
     cam += (target - cam) * (1 - Math.exp(-dt * 6.5));
@@ -319,6 +491,8 @@
     if (ay > H - R * 1.3) cam = st.y * u - (H - R * 1.3);
     if (ay < R * 1.6) cam = Math.max(0, st.y * u - R * 1.6);
     tree.style.transform = 'translate3d(' + offX.toFixed(2) + 'px,' + (-cam).toFixed(2) + 'px,0)';
+    twigsEl.style.transform = 'translate3d(0,' + (-cam).toFixed(2) + 'px,0)';
+    drawTwigs();
 
     if (!reduce && !moving) st.ry += dt * 0.35;
     var p = appleScreen();
@@ -327,7 +501,7 @@
       gl.draw();
     } else {
       var hs = R * 2.25;
-      hero.style.transform = 'translate3d(' + (p.x - hs / 2).toFixed(2) + 'px,' + (p.y - hs / 2 - R * (1 - st.sy) * .9).toFixed(2) + 'px,0) rotate(' + (st.rx + st.tilt).toFixed(3) + 'rad) scale(' + st.sx.toFixed(3) + ',' + st.sy.toFixed(3) + ')';
+      hero.style.transform = 'translate3d(' + (p.x - hs / 2).toFixed(2) + 'px,' + (p.y - hs / 2 - R * (1 - st.sy) * .9).toFixed(2) + 'px,0) rotate(' + (st.rx + st.tilt - disp().a).toFixed(3) + 'rad) scale(' + st.sx.toFixed(3) + ',' + st.sy.toFixed(3) + ')';
     }
     if (leaves.length) tickLeaves(dt, time);
   }
@@ -377,7 +551,7 @@
     embedded: false, previewLinks: false, autoPlayMedia: false
   }).then(function () {
     cur = Reveal.getIndices().h || 0;
-    st.y = targetY(cur); st.x = targetX(cur);
+    var rp0 = restPos(cur); st.y = rp0.y; st.x = rp0.x;
     if (cur > 0) firstDrop = false;
     updateUI();
     layout();
