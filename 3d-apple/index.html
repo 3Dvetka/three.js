@@ -66,7 +66,7 @@
 <body>
 <div id="stage"></div>
 <div id="vignette"></div>
-<div id="hint">Перетаскивайте, чтобы осмотреть. Колесо или щипок меняют масштаб. Двойной клик сбрасывает вид.</div>
+<div id="hint">Левая кнопка: вращение. Правая кнопка или Shift: перемещение. Колесо: масштаб к курсору. W A S D, Q E: полёт. Двойной клик: сброс.</div>
 <div id="controls" hidden>
   <button type="button" id="btn-drop">Уронить ещё раз</button>
   <button type="button" id="btn-reset">Сбросить вид</button>
@@ -275,10 +275,10 @@ window.__restoreWarn && window.__restoreWarn();
 
   var scene = new THREE.Scene();
   scene.background = new THREE.Color(0x060504);
-  scene.fog = new THREE.Fog(0x060504, 45, 110);
+  scene.fog = new THREE.Fog(0x060504, 70, 260);
 
-  var camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.01, 80);
-  var DEFAULT_DIST = 33, MIN_DIST = 1.6, MAX_DIST = 45;
+  var camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.01, 400);
+  var DEFAULT_DIST = 33, MIN_DIST = 0.25, MAX_DIST = 140;
 
   // ---------- lighting: the old desk lamp on the table is the only light source ----------
   // Positions are set by buildLamp once the lamp is placed; the environment map is built after that.
@@ -353,6 +353,7 @@ window.__restoreWarn && window.__restoreWarn();
     table.position.set(TABLE_EDGE_X + W / 2, -TABLE_THICK / 2, 0);
     table.receiveShadow = true;
     scene.add(table);
+    pickables.push(table);
 
     // soft contact darkening under the apple; the spot light shadow alone is too crisp at the contact
     var c = makeCanvas(256, 256), x = c.getContext('2d');
@@ -456,6 +457,7 @@ window.__restoreWarn && window.__restoreWarn();
       sheen: 0.12, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xff9a8a)
     });
     appleMesh = new THREE.Mesh(geo, mat);
+    pickables.push(appleMesh);
     appleMesh.castShadow = true;
     appleMesh.receiveShadow = true;
     spin.add(appleMesh);
@@ -510,6 +512,7 @@ window.__restoreWarn && window.__restoreWarn();
     var mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true; mesh.receiveShadow = true;
     group.add(mesh);
+    pickables.push(mesh);
     var host = { name: 'bananas', obj: group, geo: geo, surf: buildSurfaceHash(geo), ctx: skin.ctx, W: QUALITY.bananaTex, isApple: false,
       downLocal: new THREE.Vector3(0, -1, 0).applyQuaternion(group.quaternion.clone().invert()) };
     bananaHosts.push(host);
@@ -604,6 +607,7 @@ window.__restoreWarn && window.__restoreWarn();
     headOffset.position.copy(HEAD_JOINT).multiplyScalar(-SCAN_SCALE);
     headPivot.add(headOffset); headOffset.add(headMesh); headOffset.add(bulbMesh);
     root.add(clampMesh); inner.add(armMesh); inner.add(headPivot);
+    pickables.push(clampMesh, armMesh, headMesh, bulbMesh);
 
     // turn the arm on its swivel so the head hangs over the fruit
     function ang(x, z) { return Math.atan2(x, z); }
@@ -1517,44 +1521,106 @@ window.__restoreWarn && window.__restoreWarn();
     if (f < stats.minLight) stats.minLight = f;
   }
 
-  // ---------- camera orbit around the apple ----------
+  // ---------- camera: orbit, free zoom towards the cursor, pan and fly ----------
+  // Until the user moves the camera's point of interest it follows the scene (apple close up, whole still life far away).
+  // Panning, zooming to the cursor or flying hands that point to the user (free mode) until "Сбросить вид".
   var TARGET = new THREE.Vector3(0, 1.1, 0);
   var DEFAULT_AZ = 0.62, DEFAULT_POLAR = 1.36;
-  var POLAR_MIN = 0.3, POLAR_MAX = 1.5;
+  var POLAR_MIN = 0.02, POLAR_MAX = 1.72;   // from straight above to a little below the horizon
+  var CAMERA_MIN_Y = 0.08;                  // the eye stays above the tabletop
   var state = {
     az: DEFAULT_AZ, polar: DEFAULT_POLAR, azVel: 0, polarVel: 0,
     dist: DEFAULT_DIST, targetDist: DEFAULT_DIST,
     dragging: false, lastInteract: -1e9,
     autoEnabled: true, autoSpeed: 0,
-    resetting: false
+    resetting: false,
+    freeTarget: null,                       // Vector3 while the user steers the point of interest
+    panVel: new THREE.Vector3()
   };
   var pointers = new Map();
-  var pinchDist = 0;
+  var pinchDist = 0, pinchMid = null;
   var lastMoveTime = 0;
+  var dragMode = 'orbit';
+  var keysDown = new Set();
+  var _right = new THREE.Vector3(), _up = new THREE.Vector3(), _fwd = new THREE.Vector3(), _tmpV = new THREE.Vector3();
 
   function rotateBy(dx, dy) {
     var h = canvas.clientHeight || window.innerHeight;
-    var f = (Math.PI * 1.1 / h) * THREE.MathUtils.clamp(state.dist / DEFAULT_DIST, 0.35, 1);
+    var f = (Math.PI * 1.1 / h) * THREE.MathUtils.clamp(state.dist / DEFAULT_DIST, 0.2, 1);
     state.az -= dx * f;
     state.polar = THREE.MathUtils.clamp(state.polar - dy * f, POLAR_MIN, POLAR_MAX);
     return f;
   }
   function touchInteraction() { state.lastInteract = performance.now(); state.resetting = false; }
-  function zoomBy(factor) {
-    state.targetDist = THREE.MathUtils.clamp(state.targetDist * factor, MIN_DIST, MAX_DIST);
+  // the point of interest becomes the user's from now on
+  function takeTarget() {
+    if (!state.freeTarget) state.freeTarget = TARGET.clone();
+    return state.freeTarget;
+  }
+  // world size of one screen pixel at the point of interest
+  function pixelWorld() {
+    var h = canvas.clientHeight || window.innerHeight;
+    return 2 * state.dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / h;
+  }
+  function cameraAxes() {
+    _right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    _up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  }
+  function panBy(dxPx, dyPx) {
+    var t = takeTarget(), s = pixelWorld();
+    cameraAxes();
+    t.addScaledVector(_right, -dxPx * s).addScaledVector(_up, dyPx * s);
+    touchInteraction();
+  }
+  // zoom by a factor; with a screen point given, that point stays under the cursor (dolly towards it)
+  function zoomBy(factor, clientX, clientY) {
+    if (factor < 1 && state.targetDist * factor < MIN_DIST) {
+      // already as close as the orbit allows: keep going by carrying the point of interest forward
+      camera.getWorldDirection(_fwd);
+      takeTarget().addScaledVector(_fwd, MIN_DIST * 4 * (1 - factor));
+      touchInteraction();
+      return;
+    }
+    var next = THREE.MathUtils.clamp(state.targetDist * factor, MIN_DIST, MAX_DIST);
+    var real = next / state.targetDist;
+    if (clientX !== undefined && real !== 1) {
+      // scale the view about the surface point under the cursor, so that point stays where it is on screen
+      var P = pointUnderCursor(clientX, clientY), t = takeTarget();
+      t.sub(P).multiplyScalar(real).add(P);
+    }
+    state.targetDist = next;
     touchInteraction();
   }
 
+  // nearest scene surface under a screen point; without one, the point at the depth of the point of interest
+  var pickables = [], picker = new THREE.Raycaster(), _ndc = new THREE.Vector2(), _hits = [];
+  function pointUnderCursor(clientX, clientY) {
+    var rect = canvas.getBoundingClientRect();
+    _ndc.set((clientX - rect.left) / rect.width * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    camera.updateMatrixWorld();
+    picker.setFromCamera(_ndc, camera);
+    _hits.length = 0;
+    picker.intersectObjects(pickables, false, _hits);
+    if (_hits.length) return _hits[0].point.clone();
+    camera.getWorldDirection(_fwd);
+    var depth = TARGET.clone().sub(camera.position).dot(_fwd);
+    return picker.ray.at(depth / Math.max(picker.ray.direction.dot(_fwd), 1e-3), new THREE.Vector3());
+  }
+
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   canvas.addEventListener('pointerdown', function (e) {
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     state.dragging = true;
-    state.azVel = state.polarVel = 0;
+    state.azVel = state.polarVel = 0; state.panVel.set(0, 0, 0);
+    // right or middle button, or Shift with the left one, moves the camera instead of turning it
+    dragMode = (e.button === 2 || e.button === 1 || e.shiftKey) ? 'pan' : 'orbit';
     canvas.classList.add('dragging');
     lastMoveTime = performance.now();
     if (pointers.size === 2) {
       var pts = Array.from(pointers.values());
       pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchMid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
     }
     touchInteraction();
     hideHintSoon();
@@ -1563,19 +1629,25 @@ window.__restoreWarn && window.__restoreWarn();
     var prev = pointers.get(e.pointerId);
     if (!prev) return;
     var now = performance.now();
-    if (pointers.size === 1) {
-      var dx = e.clientX - prev.x, dy = e.clientY - prev.y;
-      var f = rotateBy(dx, dy);
-      var dt = Math.max((now - lastMoveTime) / 1000, 1 / 240);
-      state.azVel = state.azVel * 0.6 + (-dx * f / dt) * 0.4;
-      state.polarVel = state.polarVel * 0.6 + (-dy * f / dt) * 0.4;
-    }
+    var dx = e.clientX - prev.x, dy = e.clientY - prev.y;
     prev.x = e.clientX; prev.y = e.clientY;
-    if (pointers.size === 2) {
+    if (pointers.size === 1) {
+      var dt = Math.max((now - lastMoveTime) / 1000, 1 / 240);
+      if (dragMode === 'pan') {
+        panBy(dx, dy);
+      } else {
+        var f = rotateBy(dx, dy);
+        state.azVel = state.azVel * 0.6 + (-dx * f / dt) * 0.4;
+        state.polarVel = state.polarVel * 0.6 + (-dy * f / dt) * 0.4;
+      }
+    } else if (pointers.size === 2) {
+      // two fingers: pinch zooms towards the fingers, moving them together pans
       var pts = Array.from(pointers.values());
       var d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-      if (pinchDist > 0 && d > 0) zoomBy(pinchDist / d);
-      pinchDist = d;
+      var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      if (pinchMid) panBy(mid.x - pinchMid.x, mid.y - pinchMid.y);
+      if (pinchDist > 0 && d > 0) zoomBy(pinchDist / d, mid.x, mid.y);
+      pinchDist = d; pinchMid = mid;
       state.azVel = state.polarVel = 0;
     }
     lastMoveTime = now;
@@ -1589,7 +1661,7 @@ window.__restoreWarn && window.__restoreWarn();
       canvas.classList.remove('dragging');
       if (performance.now() - lastMoveTime > 80) { state.azVel = state.polarVel = 0; }
     }
-    pinchDist = 0;
+    pinchDist = 0; pinchMid = null;
     touchInteraction();
   }
   canvas.addEventListener('pointerup', endPointer);
@@ -1599,8 +1671,13 @@ window.__restoreWarn && window.__restoreWarn();
   canvas.addEventListener('wheel', function (e) {
     e.preventDefault();
     var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
-    var k = e.ctrlKey ? 0.01 : 0.0012; // ctrlKey marks a trackpad pinch
-    zoomBy(Math.exp(THREE.MathUtils.clamp(dy, -200, 200) * k));
+    if (e.ctrlKey) {
+      zoomBy(Math.exp(THREE.MathUtils.clamp(dy, -200, 200) * 0.01), e.clientX, e.clientY); // trackpad pinch
+    } else if (Math.abs(e.deltaX) > Math.abs(e.deltaY) * 0.5 && e.deltaMode === 0 && Math.abs(e.deltaX) > 2) {
+      panBy(-e.deltaX, 0); // two-finger sideways swipe on a trackpad
+    } else {
+      zoomBy(Math.exp(THREE.MathUtils.clamp(dy, -200, 200) * 0.0015), e.clientX, e.clientY);
+    }
     hideHintSoon();
   }, { passive: false });
   var gestureStart = 1; // Safari trackpad pinch
@@ -1608,29 +1685,51 @@ window.__restoreWarn && window.__restoreWarn();
   canvas.addEventListener('gesturechange', function (e) {
     e.preventDefault();
     var s = e.scale || 1;
-    zoomBy(gestureStart / s);
+    zoomBy(gestureStart / s, e.clientX, e.clientY);
     gestureStart = s;
   });
   canvas.addEventListener('dblclick', function (e) { e.preventDefault(); resetView(); });
 
+  var FLY_KEYS = { KeyW: 1, KeyS: 1, KeyA: 1, KeyD: 1, KeyQ: 1, KeyE: 1, KeyR: 1, KeyF: 1, ShiftLeft: 1, ShiftRight: 1 };
   window.addEventListener('keydown', function (e) {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (FLY_KEYS[e.code]) { keysDown.add(e.code); if (e.code.indexOf('Shift') < 0) { touchInteraction(); e.preventDefault(); hideHintSoon(); } return; }
     var step = 0.12;
     switch (e.key) {
       case 'ArrowLeft': state.az += step; touchInteraction(); break;
       case 'ArrowRight': state.az -= step; touchInteraction(); break;
-      case 'ArrowUp': state.polar = Math.min(state.polar + step, POLAR_MAX); touchInteraction(); break;
-      case 'ArrowDown': state.polar = Math.max(state.polar - step, POLAR_MIN); touchInteraction(); break;
-      case '+': case '=': zoomBy(0.88); break;
-      case '-': case '_': zoomBy(1 / 0.88); break;
+      case 'ArrowUp': state.polar = Math.max(state.polar - step, POLAR_MIN); touchInteraction(); break;
+      case 'ArrowDown': state.polar = Math.min(state.polar + step, POLAR_MAX); touchInteraction(); break;
+      case '+': case '=': zoomBy(0.85); break;
+      case '-': case '_': zoomBy(1 / 0.85); break;
       default: return;
     }
     if (e.key.indexOf('Arrow') === 0) { state.azVel = state.polarVel = 0; }
     e.preventDefault();
     hideHintSoon();
   });
+  window.addEventListener('keyup', function (e) { keysDown.delete(e.code); });
+  window.addEventListener('blur', function () { keysDown.clear(); });
+
+  // W/S forward and back along the view, A/D sideways, E/R up, Q/F down; Shift moves faster
+  function flyStep(dt) {
+    if (!keysDown.size) return;
+    var f = 0, r = 0, u = 0;
+    if (keysDown.has('KeyW')) f += 1; if (keysDown.has('KeyS')) f -= 1;
+    if (keysDown.has('KeyD')) r += 1; if (keysDown.has('KeyA')) r -= 1;
+    if (keysDown.has('KeyE') || keysDown.has('KeyR')) u += 1; if (keysDown.has('KeyQ') || keysDown.has('KeyF')) u -= 1;
+    if (!f && !r && !u) return;
+    var speed = Math.max(state.dist, 2) * 0.9 * (keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') ? 3 : 1);
+    camera.getWorldDirection(_fwd);
+    cameraAxes();
+    var t = takeTarget();
+    t.addScaledVector(_fwd, f * speed * dt).addScaledVector(_right, r * speed * dt).addScaledVector(_tmpV.set(0, 1, 0), u * speed * dt);
+    touchInteraction();
+  }
 
   function resetView() {
     state.azVel = state.polarVel = 0;
+    state.freeTarget = null; // the camera follows the scene again
     // shortest way back to the default angle
     var d = state.az - DEFAULT_AZ;
     d = ((d + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
@@ -1660,6 +1759,7 @@ window.__restoreWarn && window.__restoreWarn();
   btnLeaf.addEventListener('click', function () { setLeaf(!(leafGroup && leafGroup.visible)); });
 
   var hintEl = document.getElementById('hint'), hintTimer = 0;
+  if (isMobile) hintEl.textContent = 'Один палец: вращение. Два пальца: масштаб и перемещение. Двойное касание: сброс.';
   function hideHintSoon() {
     if (hintTimer) return;
     hintTimer = setTimeout(function () { hintEl.style.opacity = '0'; }, 2500);
@@ -1759,14 +1859,16 @@ window.__restoreWarn && window.__restoreWarn();
     }
 
     // the camera keeps the apple in view as it rolls
+    flyStep(dt);
     if (targetOverride) followTarget.copy(targetOverride);
+    else if (state.freeTarget) followTarget.copy(state.freeTarget);
     else {
       // close up the camera looks at the apple; pulled back it frames the whole still life with the lamp
       followTarget.set(body.x.x, Math.min(Math.max(body.x.y, 1.0), 1.2), body.x.z);
       var wide = THREE.MathUtils.smoothstep(state.dist, 8, 26);
       followTarget.lerp(SCENE_CENTER, wide);
     }
-    TARGET.lerp(followTarget, 1 - Math.exp(-dt * 3));
+    TARGET.lerp(followTarget, 1 - Math.exp(-dt * (state.freeTarget ? 14 : 3)));
     camOffset.set(Math.sin(state.polar) * Math.sin(state.az), Math.cos(state.polar), Math.sin(state.polar) * Math.cos(state.az)).multiplyScalar(state.dist);
     camera.position.copy(TARGET).add(camOffset);
     if (shake.t >= 0) {
@@ -1775,6 +1877,7 @@ window.__restoreWarn && window.__restoreWarn();
       camera.position.x += a * Math.sin(shake.t * 90); camera.position.y += a * Math.cos(shake.t * 77);
       if (shake.t > 0.4) shake.t = -1;
     }
+    if (camera.position.y < CAMERA_MIN_Y) camera.position.y = CAMERA_MIN_Y;
     camera.lookAt(TARGET);
   }
 
@@ -1792,6 +1895,7 @@ window.__restoreWarn && window.__restoreWarn();
         state.az = az; state.polar = polar; state.dist = state.targetDist = dist;
         state.azVel = state.polarVel = 0; state.resetting = false;
       },
+      state: state,
       setSpin: setSpin, setLeaf: setLeaf,
       why: function () { return why; },
       focus: function (x, y, z) { targetOverride = x === undefined ? null : new THREE.Vector3(x, y, z); TARGET.copy(targetOverride || TARGET); },
