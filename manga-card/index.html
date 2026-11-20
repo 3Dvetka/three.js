@@ -115,13 +115,32 @@
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 	}
 
-	/* Задняя обложка */
+	/* Задняя обложка: название, русское название и штрихкод */
 	.book__back {
 		inset: 0;
 		border-radius: 4px 2px 2px 4px;
-		background: var(--spine, #333);
-		filter: brightness(0.7);
+		background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), var(--spine, #333);
+		color: var(--spine-text, #fff);
 		transform: rotateY(180deg) translateZ(calc(var(--book-depth) / 2));
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		padding: 12% 10%;
+		container-type: inline-size;
+	}
+	.book__back-title { font-weight: 900; font-size: 13cqi; line-height: 1; }
+	.book__back-ru { margin-top: 4px; font-weight: 700; font-size: 7cqi; opacity: 0.8; }
+	/* Штрихкод нарисован градиентом, как на задней обложке танкобона */
+	.book__barcode {
+		align-self: flex-end;
+		width: 45%;
+		aspect-ratio: 2 / 1;
+		border-radius: 2px;
+		background:
+			repeating-linear-gradient(90deg, #111 0 1px, transparent 1px 3px, #111 3px 5px, transparent 5px 6px, #111 6px 7px, transparent 7px 10px),
+			#fff;
+		background-clip: content-box, padding-box;
+		padding: 4px 4px 9px;
 	}
 
 	/* Корешок. У манги он справа: японские книги читают справа налево */
@@ -305,23 +324,58 @@
 		gap: 30px;
 		padding: 30px;
 	}
-	/* Книга в окне стоит под углом, чтобы был виден корешок */
+	/* Сцена осмотра: книгу можно крутить мышью, пальцем и стрелками */
+	.sheet__viewer {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		min-width: 0;
+	}
 	.sheet__book {
 		perspective: 900px;
 		display: grid;
 		place-items: center;
-		padding: 10px 0;
+		width: 100%;
+		padding: 26px 0 30px;
+		border-radius: 16px;
+		cursor: grab;
+		touch-action: none; /* перетаскивание пальцем не прокручивает окно */
+		user-select: none;
+		-webkit-user-select: none;
 	}
+	.sheet__book.is-dragging { cursor: grabbing; }
+	.sheet__book:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 	.sheet__book .card {
 		--card-w: 180px;
 		--book-depth: 26px;
-		--ry: -28deg;
-		--rx: 6deg;
 		--gx: 20%;
 		--gy: 20%;
-		cursor: default;
+		cursor: inherit;
 	}
 	.sheet__book .card__gloss { opacity: 0.8; }
+	/* Во время перетаскивания книга идёт за рукой без задержки */
+	.sheet__book.is-dragging .card__inner,
+	.sheet__book.is-spinning .card__inner { transition: none; }
+	.sheet__book img { pointer-events: none; -webkit-user-drag: none; }
+
+	.sheet__controls { display: flex; gap: 8px; }
+	.sheet__btn {
+		height: 34px;
+		min-width: 34px;
+		padding: 0 12px;
+		border-radius: 17px;
+		border: 1px solid var(--line);
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--text);
+		font: inherit;
+		font-size: 13px;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.sheet__btn:hover { background: rgba(255, 255, 255, 0.14); }
+	.sheet__btn:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+	.sheet__hint { margin: 0; font-size: 12px; color: var(--text-dim); text-align: center; }
 
 	.sheet__text { min-width: 0; }
 	.sheet__jp { margin: 0; font-size: 13px; letter-spacing: 0.1em; color: var(--text-dim); }
@@ -403,7 +457,15 @@
 <dialog class="sheet" id="sheet" aria-labelledby="sheet-title">
 	<button class="sheet__close" id="sheet-close" type="button" aria-label="Закрыть">×</button>
 	<div class="sheet__body">
-		<div class="sheet__book" id="sheet-book"></div>
+		<div class="sheet__viewer">
+			<div class="sheet__book" id="sheet-book" tabindex="0" role="img"></div>
+			<div class="sheet__controls">
+				<button class="sheet__btn" id="spin-left" type="button" aria-label="Повернуть влево на 90°">↺</button>
+				<button class="sheet__btn" id="spin-reset" type="button">Сбросить</button>
+				<button class="sheet__btn" id="spin-right" type="button" aria-label="Повернуть вправо на 90°">↻</button>
+			</div>
+			<p class="sheet__hint">Тяни книгу, чтобы повернуть. Стрелки на клавиатуре тоже работают.</p>
+		</div>
 		<div class="sheet__text">
 			<p class="sheet__jp" id="sheet-jp"></p>
 			<h2 class="sheet__title" id="sheet-title"></h2>
@@ -558,6 +620,14 @@
 		const top = el("div", "book__face book__top");
 		const bottom = el("div", "book__face book__bottom");
 		const back = el("div", "book__face book__back");
+		back.setAttribute("aria-hidden", "true");
+		const backHead = el("div");
+		const backTitle = el("div", "book__back-title");
+		backTitle.textContent = item.title;
+		const backRu = el("div", "book__back-ru");
+		backRu.textContent = item.ru;
+		backHead.append(backTitle, backRu);
+		back.append(backHead, el("div", "book__barcode"));
 
 		inner.append(back, pages, top, bottom, spine, front);
 		return inner;
@@ -666,6 +736,8 @@
 		book.setAttribute("aria-hidden", "true");
 		book.append(createBook(item, "(max-width: 560px) 140px, 180px"), el("div", "card__shadow"));
 		bookBox.replaceChildren(book);
+		bookBox.setAttribute("aria-label", `Книга ${item.title}. Поворачивается перетаскиванием и стрелками`);
+		viewer.attach(book);
 
 		document.getElementById("sheet-jp").textContent = item.jp;
 		document.getElementById("sheet-title").textContent = item.title;
@@ -689,6 +761,134 @@
 		sheet.showModal();
 	}
 
+	// Осмотр книги в окне: свободный поворот по горизонтали и наклон до ±60°
+	const viewer = (() => {
+		const stage = document.getElementById("sheet-book");
+		const START = { ry: -28, rx: 6 };   // начальный угол: виден корешок
+		const DRAG_SPEED = 0.5;             // градусов на пиксель перетаскивания 🟡
+		const MAX_PITCH = 60;               // предел наклона вверх и вниз
+		const FRICTION = 0.94;              // затухание инерции за кадр 🟡
+		let book = null;
+		let ry = START.ry;
+		let rx = START.rx;
+		let vy = 0;
+		let vx = 0;
+		let spin = 0;
+		let drag = null;
+
+		function render() {
+			if (!book) return;
+			book.style.setProperty("--ry", ry.toFixed(2) + "deg");
+			book.style.setProperty("--rx", rx.toFixed(2) + "deg");
+			// блик скользит по обложке при повороте
+			const t = Math.sin((ry * Math.PI) / 180);
+			book.style.setProperty("--gx", (50 - t * 45).toFixed(1) + "%");
+			book.style.setProperty("--gy", (50 + rx * 0.6).toFixed(1) + "%");
+		}
+
+		function stopSpin() {
+			cancelAnimationFrame(spin);
+			stage.classList.remove("is-spinning");
+		}
+
+		// Инерция после отпускания
+		function coast() {
+			stopSpin();
+			stage.classList.add("is-spinning");
+			const step = () => {
+				vy *= FRICTION;
+				vx *= FRICTION;
+				ry += vy;
+				rx = clampPitch(rx + vx);
+				render();
+				if (Math.abs(vy) > 0.05 || Math.abs(vx) > 0.05) spin = requestAnimationFrame(step);
+				else stage.classList.remove("is-spinning");
+			};
+			spin = requestAnimationFrame(step);
+		}
+
+		// Плавный поворот кнопками, клавишами и при сбросе (через CSS-переход)
+		function turnTo(nextRy, nextRx) {
+			stopSpin();
+			ry = nextRy;
+			rx = clampPitch(nextRx);
+			render();
+		}
+
+		function clampPitch(v) {
+			return Math.max(-MAX_PITCH, Math.min(MAX_PITCH, v));
+		}
+
+		stage.addEventListener("pointerdown", (e) => {
+			if (!book || e.button > 0) return;
+			stopSpin();
+			drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() };
+			vy = 0;
+			vx = 0;
+			stage.setPointerCapture(e.pointerId);
+			stage.classList.add("is-dragging");
+		});
+		stage.addEventListener("pointermove", (e) => {
+			if (!drag || e.pointerId !== drag.id) return;
+			const now = performance.now();
+			const dy = (e.clientX - drag.x) * DRAG_SPEED;
+			const dx = -(e.clientY - drag.y) * DRAG_SPEED;
+			ry += dy;
+			rx = clampPitch(rx + dx);
+			// скорость в градусах за кадр 16 мс — для инерции
+			const dt = Math.max(1, now - drag.t);
+			vy = (dy / dt) * 16;
+			vx = (dx / dt) * 16;
+			drag.x = e.clientX;
+			drag.y = e.clientY;
+			drag.t = now;
+			render();
+		});
+		const endDrag = (e) => {
+			if (!drag || e.pointerId !== drag.id) return;
+			// если палец или мышь стояли на месте перед отпусканием, инерции нет
+			if (performance.now() - drag.t > 80) {
+				vy = 0;
+				vx = 0;
+			}
+			drag = null;
+			stage.classList.remove("is-dragging");
+			coast();
+		};
+		stage.addEventListener("pointerup", endDrag);
+		stage.addEventListener("pointercancel", endDrag);
+
+		stage.addEventListener("keydown", (e) => {
+			const keys = { ArrowLeft: [-15, 0], ArrowRight: [15, 0], ArrowUp: [0, 10], ArrowDown: [0, -10] };
+			const move = keys[e.key];
+			if (!move) return;
+			e.preventDefault();
+			turnTo(ry + move[0], rx + move[1]);
+		});
+
+		document.getElementById("spin-left").addEventListener("click", () => turnTo(ry - 90, rx));
+		document.getElementById("spin-right").addEventListener("click", () => turnTo(ry + 90, rx));
+		document.getElementById("spin-reset").addEventListener("click", () => {
+			// возвращаемся к ближайшему обороту, чтобы книга не крутилась лишние круги
+			const turns = Math.round((ry - START.ry) / 360);
+			turnTo(START.ry + turns * 360, START.rx);
+		});
+
+		return {
+			// Подключает новую книгу при открытии окна
+			attach(nextBook) {
+				stopSpin();
+				book = nextBook;
+				ry = START.ry;
+				rx = START.rx;
+				vy = 0;
+				vx = 0;
+				render();
+			},
+			stop: stopSpin
+		};
+	})();
+
 	document.getElementById("sheet-close").addEventListener("click", () => sheet.close());
 	// Клик по затемнённому фону закрывает окно
 	sheet.addEventListener("click", (e) => {
@@ -696,6 +896,7 @@
 	});
 	// После закрытия фокус возвращается на книгу, с которой открыли окно
 	sheet.addEventListener("close", () => {
+		viewer.stop();
 		if (opener) opener.focus({ preventScroll: true });
 	});
 
