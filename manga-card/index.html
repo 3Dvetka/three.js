@@ -9,11 +9,17 @@
 	:root {
 		--page-bg: #0e0e14;          /* фон страницы */
 		--shelf-bg: #5a2a2e;         /* тёмный бордовый фон полки 🟡 */
+		--sheet-bg: #23161a;         /* фон окна с описанием */
 		--text: #ffffff;
 		--text-dim: rgba(255, 255, 255, 0.62);
+		--line: rgba(255, 255, 255, 0.14);
 		--rating-bg: rgba(0, 0, 0, 0.5); /* фон круга оценки 🟡 */
 		--placeholder-bg: #3a3a42;   /* серая заглушка без обложки */
-		--card-w: 160px;             /* ширина карточки на обычном экране */
+		--paper: #f1ecdf;            /* цвет страниц на срезе книги */
+		--paper-line: #d8d0bd;       /* линии между страницами */
+		--card-w: 160px;             /* ширина книги на обычном экране */
+		--book-depth: 22px;          /* толщина книги (у танкобона примерно 13% ширины) */
+		--ease: cubic-bezier(0.23, 1, 0.32, 1);
 		color-scheme: dark;
 	}
 
@@ -39,7 +45,7 @@
 		max-width: 100%;
 	}
 
-	/* Заголовок раздела, как в видео: «manga 1 >» */
+	/* Заголовок раздела, как в видео: «manga 4 >» */
 	.shelf__head {
 		display: flex;
 		align-items: baseline;
@@ -50,22 +56,21 @@
 	}
 	.shelf__count, .shelf__chev { color: var(--text-dim); font-size: 17px; }
 
-	/* Ряд карточек: 4 в ряд на обычном экране, 2 на телефоне */
+	/* Ряд книг: 4 в ряд на обычном экране, 2 на телефоне */
 	.shelf__row {
 		display: grid;
 		grid-template-columns: repeat(4, var(--card-w));
-		gap: 24px;
+		gap: 28px;
 		padding-bottom: 16px; /* место под тень */
 	}
 
-	/* Карточка: ссылка, внутри которой поворачивается .card__inner */
+	/* Карточка-книга: ссылка, внутри которой поворачивается .card__inner */
 	.card {
 		position: relative;
 		display: block;
 		width: var(--card-w);
 		max-width: 100%;
 		aspect-ratio: 2 / 3;
-		border-radius: 10px;
 		overflow: visible;
 		cursor: pointer;
 		color: inherit;
@@ -81,19 +86,103 @@
 		--gy: 50%;
 		-webkit-tap-highlight-color: transparent;
 	}
-	.card:focus-visible { outline: 2px solid var(--text); outline-offset: 6px; }
+	.card:focus-visible { outline: 2px solid var(--text); outline-offset: 8px; border-radius: 4px; }
 
-	/* Поворачиваемый слой */
+	/* Поворачиваемый слой: объёмная книга из шести граней */
 	.card__inner {
 		position: relative;
 		width: 100%;
 		height: 100%;
-		border-radius: 10px;
 		transform-style: preserve-3d;
 		transform: translateZ(var(--z)) scale(var(--s)) rotateX(var(--rx)) rotateY(var(--ry));
-		transition: transform 0.3s ease, box-shadow 0.3s ease;
+		transition: transform 0.3s ease;
 		will-change: transform;
+	}
+
+	/* Общие правила для всех граней книги */
+	.book__face {
+		position: absolute;
+		backface-visibility: hidden;
+	}
+
+	/* Обложка — передняя грань */
+	.book__front {
+		inset: 0;
+		border-radius: 2px 4px 4px 2px;
+		transform: translateZ(calc(var(--book-depth) / 2));
+		transform-style: preserve-3d;
+		background: var(--placeholder-bg);
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+	}
+
+	/* Задняя обложка */
+	.book__back {
+		inset: 0;
+		border-radius: 4px 2px 2px 4px;
+		background: var(--spine, #333);
+		filter: brightness(0.7);
+		transform: rotateY(180deg) translateZ(calc(var(--book-depth) / 2));
+	}
+
+	/* Корешок. У манги он справа: японские книги читают справа налево */
+	.book__spine {
+		top: 0;
+		left: calc(100% - var(--book-depth));
+		width: var(--book-depth);
+		height: 100%;
+		transform: translateX(calc(var(--book-depth) / 2)) rotateY(90deg);
+		background:
+			linear-gradient(90deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.12) 45%, rgba(0, 0, 0, 0.25)),
+			var(--spine, #333);
+		color: var(--spine-text, #fff);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 0;
+		overflow: hidden;
+	}
+	.book__spine-title {
+		writing-mode: vertical-rl;
+		font-weight: 800;
+		font-size: calc(var(--book-depth) * 0.5);
+		letter-spacing: 0.04em;
+		white-space: nowrap;
+	}
+	.book__spine-vol {
+		font-weight: 800;
+		font-size: calc(var(--book-depth) * 0.5);
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* Срез страниц слева */
+	.book__pages {
+		top: 0;
+		left: 0;
+		width: var(--book-depth);
+		height: 100%;
+		transform: translateX(calc(var(--book-depth) / -2)) rotateY(-90deg);
+		background:
+			linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 20%, transparent 80%, rgba(0, 0, 0, 0.18)),
+			repeating-linear-gradient(90deg, var(--paper) 0 1px, var(--paper-line) 1px 2px);
+	}
+
+	/* Срез страниц сверху и снизу */
+	.book__top, .book__bottom {
+		left: 0;
+		width: 100%;
+		height: var(--book-depth);
+		background:
+			linear-gradient(0deg, rgba(0, 0, 0, 0.12), transparent 25%, transparent 75%, rgba(0, 0, 0, 0.12)),
+			repeating-linear-gradient(0deg, var(--paper) 0 1px, var(--paper-line) 1px 2px);
+	}
+	.book__top {
+		top: 0;
+		transform: translateY(calc(var(--book-depth) / -2)) rotateX(90deg);
+	}
+	.book__bottom {
+		top: calc(100% - var(--book-depth));
+		transform: translateY(calc(var(--book-depth) / 2)) rotateX(-90deg);
 	}
 
 	.card__cover {
@@ -101,7 +190,7 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-		border-radius: 10px;
+		border-radius: inherit;
 		background: var(--placeholder-bg);
 	}
 
@@ -109,7 +198,7 @@
 	.card__placeholder {
 		width: 100%;
 		height: 100%;
-		border-radius: 10px;
+		border-radius: inherit;
 		background: var(--placeholder-bg);
 		display: grid;
 		place-items: center;
@@ -125,11 +214,13 @@
 	.card__gloss {
 		position: absolute;
 		inset: 0;
-		border-radius: 10px;
+		border-radius: inherit;
 		pointer-events: none;
-		background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 45%);
-		background-size: 250% 250%;
-		background-position: var(--gx) var(--gy);
+		background-image:
+			linear-gradient(90deg, transparent 92%, rgba(0, 0, 0, 0.22) 97%, rgba(255, 255, 255, 0.15)),
+			linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 45%);
+		background-size: 100% 100%, 250% 250%;
+		background-position: 0 0, var(--gx) var(--gy);
 		opacity: 0.35;
 		transition: opacity 0.3s ease;
 	}
@@ -161,7 +252,7 @@
 	}
 	.card__star svg { width: 15px; height: 15px; fill: #ffffff; }
 
-	/* Тень под карточкой */
+	/* Тень под книгой */
 	.card__shadow {
 		position: absolute;
 		bottom: -12px;
@@ -171,27 +262,129 @@
 		background: rgba(0, 0, 0, 0.45);
 		filter: blur(10px);
 		border-radius: 50%;
-		transform: translateZ(-1px);
+		transform: translateZ(-30px);
 		transition: transform 0.3s ease, opacity 0.3s ease;
 		pointer-events: none;
 	}
 
 	/* Наведение или касание: выдвигаем, блик ярче, тень мягче и ниже */
 	.card.is-active { --z: 40px; --s: 1.05; }
-	.card.is-active .card__inner { box-shadow: 0 18px 30px -12px rgba(0, 0, 0, 0.5); }
+	.card.is-active .book__front { box-shadow: 0 18px 30px -12px rgba(0, 0, 0, 0.5); }
 	.card.is-active .card__gloss { opacity: 1; }
-	.card.is-active .card__shadow { opacity: 0.6; transform: translateZ(-1px) translateY(10px) scaleX(1.1); }
+	.card.is-active .card__shadow { opacity: 0.6; transform: translateZ(-30px) translateY(10px) scaleX(1.15); }
 
-	/* Телефон: карточка уже */
+	/* Окно с описанием */
+	.sheet {
+		width: min(720px, calc(100% - 32px));
+		max-height: calc(100% - 32px);
+		padding: 0;
+		border: 1px solid var(--line);
+		border-radius: 22px;
+		background: var(--sheet-bg);
+		color: var(--text);
+		box-shadow: 0 40px 80px -20px #000;
+		overflow: auto;
+		opacity: 0;
+		transform: translateY(12px) scale(0.96);
+		transition: opacity 0.14s ease-out, transform 0.14s ease-out, overlay 0.14s allow-discrete, display 0.14s allow-discrete;
+	}
+	.sheet[open] {
+		opacity: 1;
+		transform: none;
+		transition-duration: 0.22s;
+		transition-timing-function: var(--ease);
+	}
+	@starting-style {
+		.sheet[open] { opacity: 0; transform: translateY(12px) scale(0.96); }
+	}
+	.sheet::backdrop { background: rgba(6, 4, 6, 0.7); backdrop-filter: blur(4px); }
+
+	.sheet__body {
+		display: grid;
+		grid-template-columns: 220px minmax(0, 1fr);
+		gap: 30px;
+		padding: 30px;
+	}
+	/* Книга в окне стоит под углом, чтобы был виден корешок */
+	.sheet__book {
+		perspective: 900px;
+		display: grid;
+		place-items: center;
+		padding: 10px 0;
+	}
+	.sheet__book .card {
+		--card-w: 180px;
+		--book-depth: 26px;
+		--ry: -28deg;
+		--rx: 6deg;
+		--gx: 20%;
+		--gy: 20%;
+		cursor: default;
+	}
+	.sheet__book .card__gloss { opacity: 0.8; }
+
+	.sheet__text { min-width: 0; }
+	.sheet__jp { margin: 0; font-size: 13px; letter-spacing: 0.1em; color: var(--text-dim); }
+	.sheet__title { margin: 6px 0 2px; font-size: clamp(28px, 6vw, 40px); line-height: 1; font-weight: 900; text-wrap: balance; }
+	.sheet__ru { margin: 0 0 14px; color: var(--text-dim); font-weight: 700; }
+	.sheet__rating {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		height: 28px;
+		padding-left: 10px;
+		border-radius: 14px;
+		background: var(--rating-bg);
+		border: 1px solid var(--line);
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+	.sheet__facts {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 6px 16px;
+		margin: 16px 0;
+		padding: 14px 0;
+		border-block: 1px solid var(--line);
+		font-size: 14px;
+	}
+	.sheet__facts dt { color: var(--text-dim); }
+	.sheet__facts dd { margin: 0; font-weight: 700; }
+	.sheet__desc { margin: 0; line-height: 1.6; font-size: 15.5px; max-width: 62ch; }
+	.sheet__close {
+		position: absolute;
+		top: 12px;
+		right: 12px;
+		z-index: 2;
+		width: 38px;
+		height: 38px;
+		border-radius: 50%;
+		border: 1px solid var(--line);
+		background: rgba(14, 14, 20, 0.6);
+		color: var(--text);
+		font-size: 20px;
+		line-height: 1;
+		cursor: pointer;
+		display: grid;
+		place-items: center;
+	}
+	.sheet__close:hover { background: rgba(255, 255, 255, 0.12); }
+	.sheet__close:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+	/* Телефон: книги уже, окно в одну колонку */
 	@media (max-width: 480px) {
-		:root { --card-w: 130px; }
+		:root { --card-w: 130px; --book-depth: 18px; }
 		.shelf { padding: 20px; }
 		.shelf__row { grid-template-columns: repeat(2, var(--card-w)); gap: 20px; }
+	}
+	@media (max-width: 560px) {
+		.sheet__body { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 24px 20px; }
+		.sheet__book .card { --card-w: 140px; --book-depth: 20px; }
 	}
 
 	/* Если пользователь просит меньше анимации — без поворота */
 	@media (prefers-reduced-motion: reduce) {
-		.card__inner, .card__gloss, .card__shadow { transition: none; }
+		.card__inner, .card__gloss, .card__shadow, .sheet, .sheet[open] { transition: none; }
 		.card.is-active { --rx: 0deg; --ry: 0deg; }
 	}
 </style>
@@ -207,9 +400,26 @@
 	<div class="shelf__row" id="shelf-row"></div>
 </section>
 
+<dialog class="sheet" id="sheet" aria-labelledby="sheet-title">
+	<button class="sheet__close" id="sheet-close" type="button" aria-label="Закрыть">×</button>
+	<div class="sheet__body">
+		<div class="sheet__book" id="sheet-book"></div>
+		<div class="sheet__text">
+			<p class="sheet__jp" id="sheet-jp"></p>
+			<h2 class="sheet__title" id="sheet-title"></h2>
+			<p class="sheet__ru" id="sheet-ru"></p>
+			<span class="sheet__rating" id="sheet-rating"></span>
+			<dl class="sheet__facts" id="sheet-facts"></dl>
+			<p class="sheet__desc" id="sheet-desc"></p>
+		</div>
+	</div>
+</dialog>
+
 <script>
-	// Данные карточек. Чтобы добавить мангу, допиши объект в массив.
+	// Данные книг. Чтобы добавить мангу, допиши объект в массив.
 	// cover — обложка 1x (320×480), cover2x — 2x (640×960) для плотных экранов.
+	// Чтобы поставить настоящую обложку, положи файл с тем же именем в images/.
+	// spine — цвет корешка, spineText — цвет надписи на нём.
 	const MANGA = [
 		{
 			title: "One Piece",
@@ -217,7 +427,17 @@
 			section: "manga",
 			cover: "images/one-piece.jpg",
 			cover2x: "images/one-piece@2x.jpg",
-			href: "#"           // страница манги, пока заглушка
+			href: "#",          // страница манги, пока заглушка
+			spine: "#e2402f",
+			spineText: "#ffffff",
+			ru: "Ван-Пис",
+			jp: "ワンピース",
+			author: "Эйитиро Ода",
+			years: "с 1997",
+			volumes: "больше 110",
+			status: "выходит",
+			genre: "приключения, сёнэн",
+			desc: "Монки Д. Луффи съел дьявольский плод Гому-Гому, и его тело стало растягиваться как резина. Он собирает команду Соломенной Шляпы и плывёт по Гранд Лайн за легендарным сокровищем Ван-Пис, чтобы стать Королём пиратов."
 		},
 		{
 			title: "Bleach",
@@ -225,7 +445,17 @@
 			section: "manga",
 			cover: "images/bleach.jpg",
 			cover2x: "images/bleach@2x.jpg",
-			href: "#"
+			href: "#",
+			spine: "#16161a",
+			spineText: "#e8622a",
+			ru: "Блич",
+			jp: "ブリーチ",
+			author: "Тайто Кубо",
+			years: "2001–2016",
+			volumes: "74",
+			status: "завершена",
+			genre: "экшен, сверхъестественное, сёнэн",
+			desc: "Старшеклассник Ичиго Куросаки с детства видит призраков. После встречи с синигами Рукией Кучики он получает силу проводника душ и начинает защищать живых от пустых — злых духов, пожирающих души."
 		},
 		{
 			title: "Dr. Stone",
@@ -233,7 +463,17 @@
 			section: "manga",
 			cover: "images/dr-stone.jpg",
 			cover2x: "images/dr-stone@2x.jpg",
-			href: "#"
+			href: "#",
+			spine: "#164a33",
+			spineText: "#d9f2b5",
+			ru: "Доктор Стоун",
+			jp: "ドクターストーン",
+			author: "Рихиро Инагаки (сюжет), Boichi (рисунок)",
+			years: "2017–2022",
+			volumes: "26",
+			status: "завершена",
+			genre: "научная фантастика, приключения, сёнэн",
+			desc: "Загадочная вспышка превратила всё человечество в камень. Через 3700 лет гениальный школьник Сэнку Исигами пробуждается и решает отстроить цивилизацию с нуля — шаг за шагом, от мыла и стекла до радио, силой одной только науки."
 		},
 		{
 			title: "Naruto",
@@ -241,11 +481,21 @@
 			section: "manga",
 			cover: "images/naruto.jpg",
 			cover2x: "images/naruto@2x.jpg",
-			href: "#"
+			href: "#",
+			spine: "#f28a1e",
+			spineText: "#1c3f8f",
+			ru: "Наруто",
+			jp: "ナルト",
+			author: "Масаси Кисимото",
+			years: "1999–2014",
+			volumes: "72",
+			status: "завершена",
+			genre: "экшен, приключения, сёнэн",
+			desc: "В юного ниндзя Наруто Узумаки запечатан Девятихвостый лис, и деревня Листа его сторонится. Наруто мечтает стать Хокаге — главой деревни. Вместе с Саскэ и Сакурой под началом Какаси он учится, сражается и ищет признания."
 		}
 	];
 
-	const MAX_TILT = 12;       // максимальный поворот по каждой оси, градусы 🟡
+	const MAX_TILT = 28;       // максимальный поворот по каждой оси, градусы 🟡
 
 	const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.4l-5.9 3.3 1.3-6.6L2.5 9.5l6.6-.8z"/></svg>';
 
@@ -254,26 +504,23 @@
 		return Number.isInteger(value) ? String(value) : value.toFixed(1);
 	}
 
-	// Собирает одну карточку по разметке из ТЗ
-	function createCard(item) {
-		const card = document.createElement("a");
-		card.className = "card";
-		card.href = item.href;
-		card.setAttribute("aria-label", `${item.title}, оценка ${formatRating(item.rating)} из 10`);
+	// Короткий помощник для создания элемента с классом
+	function el(tag, className) {
+		const node = document.createElement(tag);
+		if (className) node.className = className;
+		return node;
+	}
 
-		const inner = document.createElement("div");
-		inner.className = "card__inner";
-
-		const img = document.createElement("img");
-		img.className = "card__cover";
+	// Обложка: картинка с srcset, при ошибке загрузки — серая заглушка
+	function createCover(item, sizes) {
+		const img = el("img", "card__cover");
 		img.alt = item.title;
 		img.decoding = "async";
 		img.width = 320;
 		img.height = 480;
 		// Обработчик ошибки ставим до src, чтобы не пропустить мгновенный отказ
 		img.addEventListener("error", () => {
-			const placeholder = document.createElement("div");
-			placeholder.className = "card__placeholder";
+			const placeholder = el("div", "card__placeholder");
 			placeholder.setAttribute("role", "img");
 			placeholder.setAttribute("aria-label", item.title);
 			placeholder.textContent = item.title;
@@ -281,23 +528,53 @@
 		}, { once: true });
 		if (item.cover2x) {
 			img.srcset = `${item.cover} 320w, ${item.cover2x} 640w`;
-			img.sizes = "(max-width: 480px) 130px, 160px";
+			img.sizes = sizes;
 		}
 		img.src = item.cover;
+		return img;
+	}
 
-		const gloss = document.createElement("div");
-		gloss.className = "card__gloss";
+	// Объёмная книга: обложка, корешок, срезы страниц и задняя обложка
+	function createBook(item, sizes) {
+		const inner = el("div", "card__inner");
+		inner.style.setProperty("--spine", item.spine);
+		inner.style.setProperty("--spine-text", item.spineText);
 
-		const rating = document.createElement("div");
-		rating.className = "card__rating";
+		const front = el("div", "book__face book__front");
+		const gloss = el("div", "card__gloss");
+		const rating = el("div", "card__rating");
 		rating.innerHTML = `<span>${formatRating(item.rating)}</span><span class="card__star">${STAR_SVG}</span>`;
+		front.append(createCover(item, sizes), gloss, rating);
 
-		const shadow = document.createElement("div");
-		shadow.className = "card__shadow";
+		const spine = el("div", "book__face book__spine");
+		spine.setAttribute("aria-hidden", "true");
+		const spineTitle = el("span", "book__spine-title");
+		spineTitle.textContent = item.title;
+		const spineVol = el("span", "book__spine-vol");
+		spineVol.textContent = "1";
+		spine.append(spineTitle, spineVol);
 
-		inner.append(img, gloss, rating);
-		card.append(inner, shadow);
+		const pages = el("div", "book__face book__pages");
+		const top = el("div", "book__face book__top");
+		const bottom = el("div", "book__face book__bottom");
+		const back = el("div", "book__face book__back");
+
+		inner.append(back, pages, top, bottom, spine, front);
+		return inner;
+	}
+
+	// Книга на полке
+	function createCard(item) {
+		const card = el("a", "card");
+		card.href = item.href;
+		card.setAttribute("aria-haspopup", "dialog");
+		card.setAttribute("aria-label", `${item.title}, оценка ${formatRating(item.rating)} из 10. Открыть описание`);
+		card.append(createBook(item, "(max-width: 480px) 130px, 160px"), el("div", "card__shadow"));
 		attachTilt(card);
+		card.addEventListener("click", (e) => {
+			e.preventDefault();
+			openSheet(item, card);
+		});
 		return card;
 	}
 
@@ -306,7 +583,7 @@
 		const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 		let frame = 0;
 
-		// Угол считаем от позиции точки относительно центра карточки
+		// Угол считаем от позиции точки относительно центра книги
 		function tiltTo(clientX, clientY) {
 			cancelAnimationFrame(frame);
 			frame = requestAnimationFrame(() => {
@@ -365,14 +642,62 @@
 		card.addEventListener("touchend", reset);
 		card.addEventListener("touchcancel", reset);
 
-		// Клавиатура: фокус выдвигает карточку без поворота
-		card.addEventListener("focus", activate);
+		// Клавиатура: фокус выдвигает книгу без поворота
+		card.addEventListener("focus", () => {
+			if (card.matches(":focus-visible")) activate();
+		});
 		card.addEventListener("blur", reset);
 	}
 
 	function clamp(v) {
 		return Math.max(-1, Math.min(1, v));
 	}
+
+	// Окно с описанием
+	const sheet = document.getElementById("sheet");
+	let opener = null;
+
+	function openSheet(item, from) {
+		opener = from;
+
+		// Книга в окне: та же объёмная модель, повёрнута корешком к зрителю
+		const bookBox = document.getElementById("sheet-book");
+		const book = el("div", "card");
+		book.setAttribute("aria-hidden", "true");
+		book.append(createBook(item, "(max-width: 560px) 140px, 180px"), el("div", "card__shadow"));
+		bookBox.replaceChildren(book);
+
+		document.getElementById("sheet-jp").textContent = item.jp;
+		document.getElementById("sheet-title").textContent = item.title;
+		document.getElementById("sheet-ru").textContent = item.ru;
+		const rating = document.getElementById("sheet-rating");
+		rating.innerHTML = `<span>${formatRating(item.rating)}</span><span class="card__star">${STAR_SVG}</span>`;
+		rating.setAttribute("aria-label", `Оценка ${formatRating(item.rating)} из 10`);
+
+		const facts = [["Автор", item.author], ["Годы", item.years], ["Томов", item.volumes], ["Статус", item.status], ["Жанр", item.genre]];
+		const list = document.getElementById("sheet-facts");
+		list.replaceChildren();
+		for (const [term, value] of facts) {
+			const dt = el("dt");
+			dt.textContent = term;
+			const dd = el("dd");
+			dd.textContent = value;
+			list.append(dt, dd);
+		}
+		document.getElementById("sheet-desc").textContent = item.desc;
+
+		sheet.showModal();
+	}
+
+	document.getElementById("sheet-close").addEventListener("click", () => sheet.close());
+	// Клик по затемнённому фону закрывает окно
+	sheet.addEventListener("click", (e) => {
+		if (e.target === sheet) sheet.close();
+	});
+	// После закрытия фокус возвращается на книгу, с которой открыли окно
+	sheet.addEventListener("close", () => {
+		if (opener) opener.focus({ preventScroll: true });
+	});
 
 	// Отрисовка полки
 	const row = document.getElementById("shelf-row");
