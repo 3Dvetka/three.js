@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Карточка манги</title>
+<title>Полка манги</title>
 <style>
 	/* Цвета и размеры в одном месте, чтобы их было легко подобрать */
 	:root {
@@ -50,9 +50,10 @@
 	}
 	.shelf__count, .shelf__chev { color: var(--text-dim); font-size: 17px; }
 
+	/* Ряд карточек: 4 в ряд на обычном экране, 2 на телефоне */
 	.shelf__row {
-		display: flex;
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: repeat(4, var(--card-w));
 		gap: 24px;
 		padding-bottom: 16px; /* место под тень */
 	}
@@ -185,6 +186,7 @@
 	@media (max-width: 480px) {
 		:root { --card-w: 130px; }
 		.shelf { padding: 20px; }
+		.shelf__row { grid-template-columns: repeat(2, var(--card-w)); gap: 20px; }
 	}
 
 	/* Если пользователь просит меньше анимации — без поворота */
@@ -216,6 +218,30 @@
 			cover: "images/one-piece.jpg",
 			cover2x: "images/one-piece@2x.jpg",
 			href: "#"           // страница манги, пока заглушка
+		},
+		{
+			title: "Bleach",
+			rating: 8.5,
+			section: "manga",
+			cover: "images/bleach.jpg",
+			cover2x: "images/bleach@2x.jpg",
+			href: "#"
+		},
+		{
+			title: "Dr. Stone",
+			rating: 8,
+			section: "manga",
+			cover: "images/dr-stone.jpg",
+			cover2x: "images/dr-stone@2x.jpg",
+			href: "#"
+		},
+		{
+			title: "Naruto",
+			rating: 9,
+			section: "manga",
+			cover: "images/naruto.jpg",
+			cover2x: "images/naruto@2x.jpg",
+			href: "#"
 		}
 	];
 
